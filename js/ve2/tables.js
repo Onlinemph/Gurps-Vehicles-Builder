@@ -318,6 +318,48 @@ export function structuralHT(bodyHP, loadedWeight, tl) {
   return Math.min(Math.round(ht), Math.max(12, tl));
 }
 
+// --- Robot arms & arm motors (p. VE65) -------------------------------------
+// Per point of ST, by arm TL (arms need TL7+). Each arm needs one motor,
+// housed in the arm; power requirement is ST/200 kW.
+export const ARM_MOTOR = {
+  7: { weight: 0.3, volume: 0.006, cost: 600 },
+  8: { weight: 0.2, volume: 0.004, cost: 400 },
+  9: { weight: 0.15, volume: 0.003, cost: 300 },
+  10: { weight: 0.1, volume: 0.002, cost: 200 },
+  11: { weight: 0.075, volume: 0.0015, cost: 150 },
+  12: { weight: 0.05, volume: 0.001, cost: 100 },
+};
+
+export const ARM_MOTOR_OPTIONS = {
+  badGrip: { name: 'Bad grip', weight: 1, volume: 1, cost: 0.5, note: '-4 DX for fine manipulation' },
+  cheap: { name: 'Cheap', weight: 2, volume: 2, cost: 0.5 },
+  extendable: { name: 'Extendable', weight: 2, volume: 2, cost: 2, note: 'doubles reach' },
+  poorCoordination: { name: 'Poor coordination', weight: 1, volume: 1, cost: 0.5, note: '-4 DX' },
+  striker: { name: 'Striker', weight: 0.5, volume: 0.5, cost: 0.2, note: 'no hand; strikes only' },
+};
+
+export function armMotorStats(st, tl, options = {}) {
+  let row = ARM_MOTOR[7];
+  for (const [k, v] of Object.entries(ARM_MOTOR)) if (tl >= Number(k)) row = v;
+  let w = st * row.weight;
+  let vol = st * row.volume;
+  let cost = st * row.cost;
+  for (const [key, on] of Object.entries(options)) {
+    if (!on || !ARM_MOTOR_OPTIONS[key]) continue;
+    const m = ARM_MOTOR_OPTIONS[key];
+    w *= m.weight;
+    vol *= m.volume;
+    cost *= m.cost;
+  }
+  return { weight: w, volume: vol, cost, powerKw: st / 200 };
+}
+
+// Arm reach in yards = 0.5 × sqrt(arm area), rounded to nearest (p. VE18).
+export function armReach(areaSf, extendable = false) {
+  const reach = Math.round(0.5 * Math.sqrt(Math.max(areaSf, 0)));
+  return extendable ? reach * 2 : reach;
+}
+
 // --- Fuel (p. VE84 Reaction Mass and Fuel Table) ---------------------------
 // lbs per gallon; cost per gallon at TL7+ (divide by 5 at TL6-); fire number
 // on 3d (null = won't ignite).

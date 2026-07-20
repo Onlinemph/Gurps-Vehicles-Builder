@@ -10,7 +10,7 @@ import {
   PAYLOAD_PER_PERSON, SEALED_COST_PER_SF, SPECIAL_STRUCTURES, STREAMLINING,
   STRUCTURE_MODIFIERS, SUBASSEMBLY_VOLUME, TURRET_ROTATION_SPACE,
   WATERPROOF_COST_PER_SF, WING_AREA_MULT, OPEN_MOUNT_ROTATION,
-  armorWeightMod, ARMOR_TYPES,
+  armMotorStats, armReach, armorWeightMod, ARMOR_TYPES,
   BODY_FACES, TURRET_FACES, SLOPE_DR_MULT, SLOPE_PD_BONUS,
   locationHP, mastVolume, pdFromDR, sizeModifier, slopeVolumeMult,
   structuralHT, structureTL, surfaceArea,
@@ -50,6 +50,7 @@ export function defaultVe2Design() {
       turrets: [],              // { volumeCf, rotation, slopeDegrees, dr }
       superstructures: [],      // { volumeCf, slopeDegrees, dr }
       openMounts: [],           // { rotation: 'none'|'limited'|'full' } — volume from components
+      arms: [],                 // { st, options: {badGrip, cheap, extendable, poorCoordination, striker} }
       masts: { present: false, heightFt: 30 },
       gasbag: { present: false, cf: 0 },
     },
@@ -106,6 +107,7 @@ export function computeVe2(design) {
   const turrets = sub.turrets || [];
   const supers = sub.superstructures || [];
   const openMounts = sub.openMounts || [];
+  const arms = sub.arms || [];
 
   // --- Component totals ----------------------------------------------------
   const comps = d.components || [];
@@ -122,8 +124,16 @@ export function computeVe2(design) {
   const contragravLift = sum((c) => c.contragravLift);
   const totalGph = sum((c) => c.fuelGph);
 
-  if (powerNeeded > powerAvailable + 0.001 && powerNeeded > 0) {
-    warnings.push(`Components need ${r1(powerNeeded)} kW but power plants provide only ${r1(powerAvailable)} kW.`);
+  // Arm motors are generated automatically from each arm's ST (TL7+).
+  if (arms.length && tl < 7) errors.push('Arm motors require TL 7+.');
+  const armMotors = arms.map((a) => armMotorStats(Math.max(n(a.st), 1), tl, a.options || {}));
+  const armMotorWeight = armMotors.reduce((a, m) => a + m.weight, 0);
+  const armMotorCost = armMotors.reduce((a, m) => a + m.cost, 0);
+  const armPowerKw = armMotors.reduce((a, m) => a + m.powerKw, 0);
+  const totalPowerNeeded = powerNeeded + armPowerKw;
+
+  if (totalPowerNeeded > powerAvailable + 0.001 && totalPowerNeeded > 0) {
+    warnings.push(`Components need ${r1(totalPowerNeeded)} kW but power plants provide only ${r1(powerAvailable)} kW.`);
   }
 
   // --- Volumes -------------------------------------------------------------
@@ -145,6 +155,9 @@ export function computeVe2(design) {
     if (inMount <= 0) warnings.push(`Open mount ${i + 1} is empty — every open mount must contain at least some volume.`);
     return inMount * (OPEN_MOUNT_ROTATION[m.rotation] ?? 1);
   });
+
+  // Arms: like pods — components plus the (automatic) arm motor; no slope.
+  const armVolumes = arms.map((a, i) => volInLocation(`arm${i}`) + armMotors[i].volume);
 
   // Superstructures (no rotation space).
   const superVolumes = supers.map((s, i) => {
@@ -168,9 +181,13 @@ export function computeVe2(design) {
   if (sub.wheels.present && sub.wheels.retractable) bodyVolume *= BODY_VOLUME_MULTS.retractIntoBody;
 
   if (bodyVolume <= 0) errors.push('The body has no volume — add components, cargo space or empty space.');
-  const attachedVolume = turretVolumes.reduce((a, v) => a + v, 0) + superVolumes.reduce((a, v) => a + v, 0);
+  const attachedVolume = turretVolumes.reduce((a, v) => a + v, 0) + superVolumes.reduce((a, v) => a + v, 0)
+    + openMountVolumes.reduce((a, v) => a + v, 0) + armVolumes.reduce((a, v) => a + v, 0);
   if (attachedVolume > bodyVolume && bodyVolume > 0) {
-    warnings.push('Combined turret/superstructure volume exceeds the body volume — add empty space to the body.');
+    warnings.push('Combined turret/superstructure/arm/open-mount volume exceeds the body volume — add empty space to the body.');
+  }
+  if (arms.length && ['veryGood', 'superior', 'excellent', 'radical'].includes(d.streamlining)) {
+    warnings.push('A vehicle with arms cannot have better than Good streamlining.');
   }
 
   // Other subassemblies
@@ -178,6 +195,7 @@ export function computeVe2(design) {
   turretVolumes.forEach((v, i) => { volumes[`turret${i}`] = v; });
   superVolumes.forEach((v, i) => { volumes[`super${i}`] = v; });
   openMountVolumes.forEach((v, i) => { volumes[`open${i}`] = v; });
+  armVolumes.forEach((v, i) => { volumes[`arm${i}`] = v; });
   if (sub.wheels.present) {
     const frac = sub.wheels.retractable || sub.wheels.type === 'small' ? SUBASSEMBLY_VOLUME.wheelsSmall
       : ['heavy', 'offroad', 'railway'].includes(sub.wheels.type) ? SUBASSEMBLY_VOLUME.wheelsHeavy
@@ -359,6 +377,16 @@ export function computeVe2(design) {
     // Open mounts ignore the frame-strength HP multiplier.
     hp[`openMount${i + 1}`] = Math.max(Math.round((areas[`open${i}`] || 0) * HP_FACTORS.openMount), 1);
   });
+  const armStats = arms.map((a, i) => ({
+    st: Math.max(Math.floor(n(a.st)), 1),
+    hp: locationHP(areas[`arm${i}`] || 0, HP_FACTORS.arm, frameKey),
+    reach: armReach(areas[`arm${i}`] || 0, !!(a.options || {}).extendable),
+    motor: {
+      weight: r1(armMotors[i].weight), volume: r2(armMotors[i].volume),
+      cost: Math.round(armMotors[i].cost), powerKw: r2(armMotors[i].powerKw),
+    },
+  }));
+  arms.forEach((_, i) => { hp[`arm${i + 1}`] = armStats[i].hp; });
   if (sub.wheels.present) hp.perWheel = locationHP(areas.wheels, HP_FACTORS.wheel, frameKey, Math.max(sub.wheels.count, 1));
   if (sub.tracks.present) hp.perTrack = locationHP(areas.tracks, HP_FACTORS.track, frameKey, 2);
   if (sub.halftracks.present) hp.perTrack = locationHP(areas.halftracks, HP_FACTORS.track, frameKey, 2);
@@ -370,7 +398,7 @@ export function computeVe2(design) {
   if (sub.gasbag.present) hp.gasbag = Math.max(Math.round(areas.gasbag * HP_FACTORS.gasbag), 1);
 
   // --- Weights -------------------------------------------------------------
-  const emptyWeight = structWeight + armorWeight + compWeight + mastWeight + gasbagWeight;
+  const emptyWeight = structWeight + armorWeight + compWeight + armMotorWeight + mastWeight + gasbagWeight;
   const people = Math.max(Math.floor(d.crew), 0) + Math.max(Math.floor(d.passengers), 0);
   const payload = people * PAYLOAD_PER_PERSON + n(d.cargoCf) * PAYLOAD_PER_CARGO_CF;
   const fuelType = FUELS[d.fuel.type] || FUELS.gasoline;
@@ -383,7 +411,7 @@ export function computeVe2(design) {
 
   // --- Statistics ----------------------------------------------------------
   const sm = sizeModifier(totalVolume);
-  const price = structCost + armorCost + compCost + mastCost + gasbagCost + sealCost;
+  const price = structCost + armorCost + compCost + armMotorCost + mastCost + gasbagCost + sealCost;
   // With hardpoints, HT always uses the weight with stores loaded.
   const ht = structuralHT(hp.body, hardpointLoad > 0 ? loadedWithStores : loadedWeight, tl);
 
@@ -619,13 +647,14 @@ export function computeVe2(design) {
     hp,
     weights: {
       structure: r1(structWeight), armor: r1(armorWeight), components: r1(compWeight),
-      masts: r1(mastWeight), gasbag: r1(gasbagWeight),
+      armMotors: r1(armMotorWeight), masts: r1(mastWeight), gasbag: r1(gasbagWeight),
       empty: r1(emptyWeight), payload: r1(payload), fuel: r1(fuelWeight),
       loaded: r1(loadedWeight), loadedTons: r2(loadedTons),
       loadedWithStores: hardpointLoad > 0 ? r1(loadedWithStores) : null,
       submerged: r1(submergedWeight),
     },
-    power: { needed: r1(powerNeeded), available: r1(powerAvailable) },
+    power: { needed: r1(totalPowerNeeded), available: r1(powerAvailable) },
+    arms: armStats,
     fuelUse: { gph: r2(totalGph), durationHours: durationHours === null ? null : Math.round(durationHours * 10000) / 10000 },
     propulsion: { groundKw, aquaticThrust, airThrust, staticLift, contragravLift },
     flotation: r1(flotation),

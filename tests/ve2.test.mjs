@@ -400,3 +400,59 @@ test('space performance reports sAccel from thrust', async () => {
   assert.ok(r.perf.space, 'space perf present');
   assert.ok(Math.abs(r.perf.space.sAccelG - 4000 / r.weights.loaded) < 0.01);
 });
+
+// --- Arms ------------------------------------------------------------------
+test('arm motor table math', async () => {
+  const { armMotorStats, armReach } = await import('../js/ve2/tables.js');
+  // ST 100, TL8 striker: 100×0.2×0.5 = 10 lbs; 100×0.004×0.5 = 0.2 cf;
+  // 100×$400×0.2 = $8,000; 0.5 kW.
+  const m = armMotorStats(100, 8, { striker: true });
+  assert.equal(m.weight, 10);
+  assert.ok(Math.abs(m.volume - 0.2) < 1e-9);
+  assert.equal(m.cost, 8000);
+  assert.equal(m.powerKw, 0.5);
+  // Cheap doubles weight/volume, halves cost.
+  const c = armMotorStats(50, 10, { cheap: true });
+  assert.equal(c.weight, 10);   // 50×0.1×2
+  assert.equal(c.cost, 5000);   // 50×200×0.5
+  // Reach: 0.5×sqrt(area); extendable doubles.
+  assert.equal(armReach(16), 2);
+  assert.equal(armReach(16, true), 4);
+});
+
+test('combat walker preset: legs + arms compile and perform', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { VE2_PRESETS } = await import('../js/ve2/presets.js');
+  const walker = VE2_PRESETS.find((p) => p.name.includes('Combat Walker'));
+  const r = computeVe2(walker);
+  assert.deepEqual(r.errors, [], r.errors.join('; '));
+  assert.equal(r.perf.ground.system, 'legs2');
+  assert.ok(r.perf.ground.topSpeed >= 30 && r.perf.ground.topSpeed <= 80, `speed ${r.perf.ground.topSpeed}`);
+  assert.equal(r.arms.length, 2);
+  assert.equal(r.arms[0].st, 60);
+  assert.ok(r.arms[0].reach >= 1, `reach ${r.arms[0].reach}`);
+  assert.ok(r.hp.arm1 > 0 && r.hp.arm2 > 0);
+  // The striker arm's motor is half the weight of the manipulator's.
+  assert.ok(Math.abs(r.arms[1].motor.weight - r.arms[0].motor.weight / 2) < 0.1);
+  // Arm motors draw power: 2 × 60/200 = 0.6 kW on top of component draw.
+  assert.ok(Math.abs(r.power.needed - (102 + 0.6)) < 0.01, `power ${r.power.needed}`);
+  assert.equal(r.perf.ground.offRoad, 1);
+});
+
+test('arms below TL7 are an error; arms limit streamlining', async () => {
+  const { computeVe2, defaultVe2Design } = await import('../js/ve2/vehicle.js');
+  const d = defaultVe2Design();
+  d.tl = 6;
+  d.subassemblies.arms = [{ st: 20, options: {} }];
+  d.components = [{ name: 'ballast', weight: 100, cost: 0, volume: 50, location: 'body' }];
+  const r = computeVe2(d);
+  assert.ok(r.errors.some((e) => e.includes('Arm motors require TL 7+')), r.errors.join('; '));
+
+  const d2 = defaultVe2Design();
+  d2.tl = 8;
+  d2.streamlining = 'veryGood';
+  d2.subassemblies.arms = [{ st: 20, options: {} }];
+  d2.components = [{ name: 'ballast', weight: 100, cost: 0, volume: 50, location: 'body' }];
+  const r2 = computeVe2(d2);
+  assert.ok(r2.warnings.some((w) => w.includes('cannot have better than Good streamlining')), r2.warnings.join('; '));
+});

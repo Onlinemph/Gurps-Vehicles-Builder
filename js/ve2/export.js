@@ -26,6 +26,7 @@ export function toVe2Markdown(design, r) {
   (sub.turrets || []).forEach((t, i) => subs.push(`turret ${i + 1} (${fmt(t.volumeCf)} cf, ${t.rotation})`));
   (sub.superstructures || []).forEach((s, i) => subs.push(`superstructure ${i + 1} (${fmt(s.volumeCf)} cf)`));
   (sub.openMounts || []).forEach((m, i) => subs.push(`open mount ${i + 1} (${m.rotation} rotation)`));
+  (sub.arms || []).forEach((a, i) => subs.push(`arm ${i + 1} (ST ${a.st})`));
   if (sub.masts.present) subs.push(`mast (${fmt(sub.masts.heightFt)} ft)`);
   if (sub.gasbag.present) subs.push(`gasbag (${fmt(sub.gasbag.cf)} cf)`);
 
@@ -50,6 +51,11 @@ export function toVe2Markdown(design, r) {
         return `${cap(f)} PD ${face.pd}/DR ${face.effDR}${face.slope ? ` (${face.slope}° slope)` : ''}`;
       });
     lines.push(`**Armor:** ${at.name} — ${parts.join(', ') || 'none'} (${fmt(r.armor.weight)} lbs., $${fmt(r.armor.cost)}).`);
+  }
+
+  if (r.arms?.length) {
+    lines.push('**Arms:** ' + r.arms.map((a, i) =>
+      `arm ${i + 1} ST ${a.st}, Reach ${a.reach} yd (motor ${fmt(a.motor.weight, 1)} lbs., $${fmt(a.motor.cost)}, ${a.motor.powerKw} kW)`).join('; ') + '.');
   }
 
   // Hit points

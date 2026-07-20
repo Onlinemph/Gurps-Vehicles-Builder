@@ -149,6 +149,7 @@ function syncForm() {
   renderTurrets();
   renderSupers();
   renderOpenMounts();
+  renderArms();
   renderComponents();
   syncLocationOptions();
 }
@@ -224,6 +225,45 @@ function renderSupers() {
   if (!design.subassemblies.superstructures?.length) wrap.innerHTML = '<p class="muted">No superstructures.</p>';
 }
 
+const ARM_OPTS = [
+  ['badGrip', 'bad grip'], ['striker', 'striker'], ['poorCoordination', 'poor coord.'],
+  ['cheap', 'cheap'], ['extendable', 'extendable'],
+];
+
+function renderArms() {
+  const wrap = $('arm-list');
+  wrap.innerHTML = '';
+  (design.subassemblies.arms || []).forEach((a, i) => {
+    if (!a.options) a.options = {};
+    const row = document.createElement('div');
+    row.className = 'weapon-row';
+    row.innerHTML = `
+      <span class="weapon-name">Arm ${i + 1}</span>
+      <span class="weapon-detail sub-edit">
+        <label>ST <input type="number" data-k="st" min="1" step="1" value="${a.st || 10}"></label>
+        ${ARM_OPTS.map(([k, label]) =>
+          `<label><input type="checkbox" class="arm-opt" data-opt="${k}" ${a.options[k] ? 'checked' : ''}> ${label}</label>`).join('')}
+      </span>`;
+    row.querySelector('[data-k="st"]').addEventListener('input', (e) => { a.st = Number(e.target.value) || 1; render(); });
+    row.querySelectorAll('.arm-opt').forEach((el) => {
+      el.addEventListener('change', () => { a.options[el.dataset.opt] = el.checked; render(); });
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn small danger';
+    del.textContent = '✕';
+    del.addEventListener('click', () => {
+      design.subassemblies.arms.splice(i, 1);
+      design.components = design.components.filter((c) => c.location !== `arm${i}`)
+        .map((c) => remapLocation(c, 'arm', i));
+      renderArms(); syncLocationOptions(); renderComponents(); render();
+    });
+    row.appendChild(del);
+    wrap.appendChild(row);
+  });
+  if (!design.subassemblies.arms?.length) wrap.innerHTML = '<p class="muted">No arms.</p>';
+}
+
 function renderOpenMounts() {
   const wrap = $('open-list');
   wrap.innerHTML = '';
@@ -275,6 +315,11 @@ function initSubassemblyAdders() {
     design.subassemblies.openMounts.push({ rotation: 'full' });
     renderOpenMounts(); syncLocationOptions(); render();
   });
+  $('arm-add').addEventListener('click', () => {
+    if (!design.subassemblies.arms) design.subassemblies.arms = [];
+    design.subassemblies.arms.push({ st: 20, options: {} });
+    renderArms(); syncLocationOptions(); render();
+  });
 }
 
 function syncLocationOptions() {
@@ -282,6 +327,7 @@ function syncLocationOptions() {
   (design.subassemblies.turrets || []).forEach((_, i) => entries.push([`turret${i}`, `Turret ${i + 1}`]));
   (design.subassemblies.superstructures || []).forEach((_, i) => entries.push([`super${i}`, `Superstructure ${i + 1}`]));
   (design.subassemblies.openMounts || []).forEach((_, i) => entries.push([`open${i}`, `Open mount ${i + 1}`]));
+  (design.subassemblies.arms || []).forEach((_, i) => entries.push([`arm${i}`, `Arm ${i + 1}`]));
   const current = $('c-location').value || 'body';
   fillSelect($('c-location'), entries, entries.some(([v]) => v === current) ? current : 'body');
 }
@@ -290,9 +336,9 @@ function syncLocationOptions() {
 function locationLabel(loc) {
   if (!loc || loc === 'body') return '';
   if (loc === 'wings') return 'in wings';
-  const m = loc.match(/^(turret|super|open)(\d+)$/);
+  const m = loc.match(/^(turret|super|open|arm)(\d+)$/);
   if (m) {
-    const kind = { turret: 'turret', super: 'superstructure', open: 'open mount' }[m[1]];
+    const kind = { turret: 'turret', super: 'superstructure', open: 'open mount', arm: 'arm' }[m[1]];
     return `in ${kind} ${Number(m[2]) + 1}`;
   }
   return `in ${loc}`;
@@ -434,6 +480,13 @@ function render() {
   }
   if (r.armor.weight > 0) html += row('Armor weight & cost', `${fmt(r.armor.weight)} lbs · $${fmt(r.armor.cost)}`);
 
+  if (r.arms && r.arms.length) {
+    html += '<h3>Arms</h3>';
+    r.arms.forEach((a, i) => {
+      html += row(`Arm ${i + 1}`, `ST ${a.st} · Reach ${a.reach} yd · ${a.hp} HP · motor ${fmt(a.motor.weight, 1)} lbs, $${fmt(a.motor.cost)}, ${a.motor.powerKw} kW`);
+    });
+  }
+
   html += '<h3>Hit Points</h3>';
   html += `<p>${Object.entries(r.hp).map(([k, v]) => `${prettyKey(k.replace('per', ''))} ${v}`).join(' · ')}</p>`;
 
@@ -515,9 +568,9 @@ function formatDuration(hours) {
 }
 
 function volumeLabel(key) {
-  const m = key.match(/^(turret|super|open)(\d+)$/);
+  const m = key.match(/^(turret|super|open|arm)(\d+)$/);
   if (m) {
-    const kind = { turret: 'Turret', super: 'Superstructure', open: 'Open mount' }[m[1]];
+    const kind = { turret: 'Turret', super: 'Superstructure', open: 'Open mount', arm: 'Arm' }[m[1]];
     return `${kind} ${Number(m[2]) + 1}`;
   }
   return key.charAt(0).toUpperCase() + key.slice(1);

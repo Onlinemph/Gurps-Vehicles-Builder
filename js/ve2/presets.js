@@ -134,4 +134,38 @@ export const VE2_PRESETS = [
     hardpoints: { count: 2, loadLbs: 500 },
     options: { improvedSuspension: false, improvedBrakes: false, allWheelSteering: false, allWheelDrive: false, smartwheels: false, rollStabilizers: false },
   },
+  {
+    name: 'TL9 Combat Walker',
+    tl: 9, controls: 'computerized', streamlining: 'none',
+    features: { flotationHull: false, submersibleHull: false, hydroLines: 'none', catamaran: false, trimaran: false, sealed: true, waterproofed: false, liftingBody: false, responsive: false },
+    structure: { frame: 'heavy', material: 'standard', special: 'none' },
+    armor: { type: 'laminateStandard', mode: 'overall', dr: 30, faces: null, otherDr: 0 },
+    subassemblies: {
+      wheels: { present: false, type: 'standard', count: 4, retractable: false },
+      tracks: { present: false }, halftracks: { present: false }, skids: { present: false },
+      legs: { present: true, count: 2 },
+      wings: { present: false, type: 'standard', volumeFrac: 0.1 },
+      rotors: { present: false, tl: 7 },
+      turrets: [], superstructures: [], openMounts: [],
+      arms: [
+        { st: 60, options: {} },                 // manipulator arm
+        { st: 60, options: { striker: true } },  // weapon-mount arm
+      ],
+      masts: { present: false, heightFt: 30 },
+      gasbag: { present: false, cf: 0 },
+    },
+    components: [
+      { name: 'gas turbine, 150 kW', weight: 300, cost: 9000, volume: 6, kwOut: 150, fuelGph: 8, airBreathing: true, location: 'body' },
+      { name: 'legged drivetrain, 100 kW', weight: 400, cost: 4000, volume: 8, kwIn: 100, groundKw: 100, location: 'body' },
+      { name: 'fuel tank, 60 gal', weight: 30, cost: 120, volume: 9, location: 'body' },
+      { name: 'crew station (pilot)', weight: 50, cost: 250, volume: 15, location: 'body' },
+      { name: 'sensors & comms', weight: 100, cost: 25000, volume: 2, kwIn: 2, location: 'body' },
+      { name: '25mm autocannon + ammo', weight: 350, cost: 70000, volume: 7, location: 'arm1' },
+      { name: 'tool package', weight: 40, cost: 2000, volume: 1, location: 'arm0' },
+    ],
+    crew: 1, passengers: 0, cargoCf: 5, emptySpaceCf: 5,
+    fuel: { type: 'jetFuel', gallons: 60 },
+    hardpoints: { count: 0, loadLbs: 0 },
+    options: { improvedSuspension: false, improvedBrakes: false, allWheelSteering: false, allWheelDrive: false, smartwheels: false, rollStabilizers: false },
+  },
 ];
