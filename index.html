@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GURPS Vehicles Builder</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🚙</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>GURPS Vehicles Builder</h1>
+    <p>Design a vehicle, get a 4e-style stat block — instantly.</p>
+  </div>
+  <div class="toolbar">
+    <select id="preset-select" title="Load a sample design"></select>
+    <select id="saved-select" title="Load a saved design"></select>
+    <button class="btn" id="btn-new" title="Start over">New</button>
+    <button class="btn primary" id="btn-save" title="Save to this browser">Save</button>
+    <button class="btn" id="btn-delete" title="Delete a saved design">Delete…</button>
+    <button class="btn" id="btn-import-json">Import</button>
+    <button class="btn" id="btn-export-json">Export JSON</button>
+    <button class="btn" id="btn-export-md">Stat Block</button>
+    <button class="btn" id="btn-print">Print</button>
+    <button class="btn" id="btn-help">How it works</button>
+    <input type="file" id="import-file" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<div id="flash"></div>
+
+<main class="layout">
+
+  <!-- ================= Design form ================= -->
+  <section class="panel form-panel">
+
+    <div class="card">
+      <h2>1 · Basics</h2>
+      <div class="grid2">
+        <label>Vehicle name
+          <input type="text" id="f-name" placeholder="e.g. Scout Buggy">
+        </label>
+        <label>Tech Level
+          <select id="f-tl"></select>
+        </label>
+        <label>Chassis type
+          <select id="f-chassis"></select>
+        </label>
+        <label>Frame capacity (max loaded weight, lbs)
+          <input type="number" id="f-maxlwt" min="50" step="100">
+        </label>
+        <label>Frame build
+          <select id="f-quality"></select>
+        </label>
+        <label>Streamlining
+          <select id="f-streamlining"></select>
+        </label>
+        <label>Cab / crew position
+          <select id="f-cab"></select>
+        </label>
+        <label id="row-wheels">Wheels
+          <input type="number" id="f-wheels" min="2" max="16" step="1">
+        </label>
+        <label class="length-row">Length (yds)
+          <span class="inline">
+            <input type="checkbox" id="f-length-auto" checked> auto
+            <input type="number" id="f-length" min="0.5" step="0.5" disabled>
+          </span>
+        </label>
+      </div>
+      <p class="muted" id="note-chassis"></p>
+    </div>
+
+    <div class="card">
+      <h2>2 · Propulsion</h2>
+      <div class="grid2">
+        <label>Powerplant
+          <select id="f-engine"></select>
+        </label>
+        <label id="row-power">Rated power (hp)
+          <input type="number" id="f-power" min="0" step="10">
+        </label>
+        <label id="row-fuel"><span id="label-fuel">Fuel carried (lbs)</span>
+          <input type="number" id="f-fuel" min="0" step="10">
+        </label>
+      </div>
+      <p class="muted" id="note-engine"></p>
+    </div>
+
+    <div class="card">
+      <h2>3 · Armor</h2>
+      <div class="grid2">
+        <label>Material
+          <select id="f-armor-material"></select>
+        </label>
+        <label>Set all facings to
+          <input type="number" id="f-dr-all" min="0" step="1" placeholder="DR">
+        </label>
+      </div>
+      <div class="dr-grid">
+        <label>Front <input type="number" id="f-dr-front" min="0" step="1"></label>
+        <label>Sides <input type="number" id="f-dr-sides" min="0" step="1"></label>
+        <label>Rear <input type="number" id="f-dr-rear" min="0" step="1"></label>
+        <label>Top <input type="number" id="f-dr-top" min="0" step="1"></label>
+        <label>Under <input type="number" id="f-dr-under" min="0" step="1"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>4 · Crew &amp; Payload</h2>
+      <div class="grid3">
+        <label>Crew stations
+          <input type="number" id="f-crew" min="0" step="1">
+        </label>
+        <label>Passenger seats
+          <input type="number" id="f-passengers" min="0" step="1">
+        </label>
+        <label>Cargo capacity (lbs)
+          <input type="number" id="f-cargo" min="0" step="50">
+        </label>
+      </div>
+      <p class="muted">Each person is assumed to weigh 200 lbs with gear.</p>
+    </div>
+
+    <div class="card">
+      <h2>5 · Accessories</h2>
+      <div id="accessory-list" class="acc-list"></div>
+    </div>
+
+    <div class="card">
+      <h2>6 · Weapons</h2>
+      <div id="weapon-list"></div>
+      <div class="weapon-adder">
+        <select id="weapon-select"></select>
+        <select id="weapon-mount"></select>
+        <input type="number" id="weapon-qty" min="1" step="1" value="1" title="Quantity">
+        <button class="btn primary" id="weapon-add" type="button">Add</button>
+      </div>
+      <div id="weapon-custom" class="grid2" style="display:none">
+        <label>Name <input type="text" id="weapon-c-name" placeholder="Custom weapon"></label>
+        <label>Weight (lbs) <input type="number" id="weapon-c-weight" min="0" value="50"></label>
+        <label>Cost ($) <input type="number" id="weapon-c-cost" min="0" value="10000"></label>
+        <label>Damage <input type="text" id="weapon-c-dmg" placeholder="e.g. 6d pi"></label>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ================= Live output ================= -->
+  <section class="panel output-panel" id="print-area">
+
+    <div class="card sheet">
+      <h2 id="sheet-name">Vehicle</h2>
+      <p class="sub" id="sheet-sub"></p>
+      <div class="table-scroll">
+        <table id="stat-table" class="stat-table"></table>
+      </div>
+      <ul class="extra" id="sheet-extra"></ul>
+    </div>
+
+    <div class="card" id="problems-card" style="display:none">
+      <h2>Problems</h2>
+      <ul id="problems" class="problems"></ul>
+    </div>
+
+    <div class="card">
+      <h2>Weight budget</h2>
+      <div class="weight-bar"><div id="weight-bar-fill"></div></div>
+      <p class="muted" id="weight-bar-label"></p>
+      <div id="weight-breakdown" class="breakdown"></div>
+    </div>
+
+    <div class="card">
+      <h2>Cost breakdown</h2>
+      <div id="cost-breakdown" class="breakdown"></div>
+    </div>
+
+  </section>
+</main>
+
+<!-- ================= Help ================= -->
+<aside id="help-panel" class="help-panel">
+  <div class="card">
+    <h2>How the builder works</h2>
+    <p>This is a streamlined, fan-made vehicle design system that produces stat
+    blocks in the style of the <i>GURPS Basic Set</i> vehicle table. It is not a
+    reproduction of any published design system — every formula is listed below,
+    so you can house-rule anything you disagree with.</p>
+
+    <h3>The big idea: a weight budget</h3>
+    <p>Pick a <b>frame capacity</b> — the maximum loaded weight the chassis can
+    carry. Everything you add (structure, engine, armor, fuel, seats, weapons,
+    people, cargo) spends pounds from that budget. Stay under budget and the
+    design is legal.</p>
+
+    <h3>Formulas</h3>
+    <ul>
+      <li><b>Structure weight</b> = chassis fraction (22–40%) × frame capacity, adjusted for Lightweight/Heavy-Duty builds.</li>
+      <li><b>HP</b> = 4 × ∛(empty weight in lbs) — the Basic Set machine formula.</li>
+      <li><b>Top speed</b> = k × √(hp per loaded ton) × streamlining, with k per chassis (11.5 wheeled, 9 tracked, 11 airplane, …). Displacement hulls are capped at hull speed = 1.55 × √(length in feet) mph.</li>
+      <li><b>Acceleration</b> (yds/sec²) = (hp/ton) ÷ chassis divisor. Move is shown as accel/top-speed-in-yards-per-second (mph ÷ 2).</li>
+      <li><b>SM</b> from the Basic Set size table by length, −1 for being a long box; length is estimated as k × ∛(loaded tons) unless you override it.</li>
+      <li><b>Armor weight</b> = surface area × facing share × DR × material density (lbs per DR per sq ft). Area ≈ k × (frame capacity)^⅔ sq ft.</li>
+      <li><b>Range</b> = cruise speed (70% of top) × endurance. Fuel engines burn (lbs/hp·hr × rated hp × cruise fraction); electrics drain battery Wh at cruise power.</li>
+      <li><b>Hnd/SR</b> from chassis, worsened one step at SM +6 and again at SM +9.</li>
+      <li><b>HT</b> = 11 (+1 Heavy-Duty). An <b>f</b> suffix means flammable fuel (removed by a fire suppression system).</li>
+      <li><b>Cost</b> = structure + engine + armor + seats + gear + weapons, +20% assembly, rounded to 3 significant figures.</li>
+    </ul>
+
+    <h3>Locations codes</h3>
+    <ul id="loc-legend" class="loc-legend"></ul>
+
+    <h3>Fine print</h3>
+    <p class="muted">This tool is an original, unofficial fan creation. GURPS is
+    a registered trademark of Steve Jackson Games; the material presented here
+    is intended for use with the GURPS system and is released per the
+    <a href="http://www.sjgames.com/general/online_policy/" target="_blank" rel="noopener">SJ Games Online Policy</a>.
+    It is not published, endorsed, or approved by Steve Jackson Games.</p>
+  </div>
+</aside>
+
+<!-- ================= Markdown modal ================= -->
+<dialog id="md-modal">
+  <h2>Stat block (Markdown)</h2>
+  <textarea id="md-output" rows="18" spellcheck="false"></textarea>
+  <div class="modal-actions">
+    <button class="btn primary" id="md-copy">Copy</button>
+    <button class="btn" id="md-download">Download .md</button>
+    <button class="btn" id="md-close">Close</button>
+  </div>
+</dialog>
+
+<script type="module" src="js/ui.js"></script>
+</body>
+</html>
