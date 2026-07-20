@@ -52,6 +52,7 @@
         <label class="acc-row"><input type="checkbox" id="f-catamaran"> <span><b>Catamaran/trimaran hull</b></span></label>
         <label class="acc-row"><input type="checkbox" id="f-liftingbody"> <span><b>Lifting body</b> <small>needs Very Good+ streamlining</small></span></label>
         <label class="acc-row"><input type="checkbox" id="f-responsive"> <span><b>Responsive structure</b> <small>TL8+</small></span></label>
+        <label class="acc-row"><input type="checkbox" id="f-space"> <span><b>Space performance</b> <small>report sAccel from thrust</small></span></label>
       </div>
       <div class="grid2" style="margin-top:8px">
         <label>Hydrodynamic lines <select id="f-hydrolines"></select></label>
@@ -130,6 +131,10 @@
       <h3>Superstructures</h3>
       <div id="super-list"></div>
       <button class="btn" id="super-add" type="button">+ Add superstructure</button>
+      <h3>Open mounts</h3>
+      <div id="open-list"></div>
+      <button class="btn" id="open-add" type="button">+ Add open mount</button>
+      <p class="muted">An open mount's size comes from the components you place in it.</p>
     </div>
 
     <div class="card">
@@ -141,6 +146,7 @@
         <label>Weight (lbs) <input type="number" id="c-weight" step="any" value="0"></label>
         <label>Cost ($) <input type="number" id="c-cost" step="any" value="0"></label>
         <label>Volume (cf) <input type="number" id="c-volume" step="any" value="0"></label>
+        <label>Fuel use (gph) <input type="number" id="c-gph" step="any" value="0"></label>
         <label>Power needed (kW) <input type="number" id="c-kwin" step="any" value="0"></label>
         <label>Power output (kW) <input type="number" id="c-kwout" step="any" value="0"></label>
         <label>Ground motive power (kW) <input type="number" id="c-groundkw" step="any" value="0"></label>
@@ -163,6 +169,7 @@
       <div class="grid3">
         <label>Crew <input type="number" id="f-crew" min="0" step="1"></label>
         <label>Passengers <input type="number" id="f-passengers" min="0" step="1"></label>
+        <label>Exposed seats (drag in flight) <input type="number" id="f-exposed" min="0" step="1"></label>
         <label>Cargo space (cf) <input type="number" id="f-cargocf" min="0" step="1"></label>
         <label>Extra empty space (cf) <input type="number" id="f-emptycf" min="0" step="1"></label>
         <label>Fuel type <select id="f-fueltype"></select></label>

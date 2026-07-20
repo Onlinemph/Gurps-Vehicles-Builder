@@ -25,6 +25,7 @@ export function toVe2Markdown(design, r) {
   if (sub.rotors.present) subs.push('rotors');
   (sub.turrets || []).forEach((t, i) => subs.push(`turret ${i + 1} (${fmt(t.volumeCf)} cf, ${t.rotation})`));
   (sub.superstructures || []).forEach((s, i) => subs.push(`superstructure ${i + 1} (${fmt(s.volumeCf)} cf)`));
+  (sub.openMounts || []).forEach((m, i) => subs.push(`open mount ${i + 1} (${m.rotation} rotation)`));
   if (sub.masts.present) subs.push(`mast (${fmt(sub.masts.heightFt)} ft)`);
   if (sub.gasbag.present) subs.push(`gasbag (${fmt(sub.gasbag.cf)} cf)`);
 
@@ -85,6 +86,9 @@ export function toVe2Markdown(design, r) {
     lines.push(`**Submerged Performance:** Speed ${u.topSpeed} mph, uAccel ${u.uAccel}, ` +
       `Draft ${u.draft} ft, Crush depth ${fmt(u.crushDepth)} yds.`);
   }
+  if (r.perf.space) {
+    lines.push(`**Space Performance:** sAccel ${r.perf.space.sAccelG} G (${r.perf.space.sAccel} mph/s), sMR ${r.perf.space.sMR}.`);
+  }
   if (r.perf.aerial) {
     const a = r.perf.aerial;
     lines.push(`**Aerial Performance:** ${a.stallSpeed === 0 ? 'Stall 0 (VTOL/hover)' : `Stall ${a.stallSpeed} mph`}, ` +
@@ -107,7 +111,11 @@ export function toVe2Markdown(design, r) {
     lines.push('');
   }
   const fuel = FUELS[d.fuel.type];
-  if (d.fuel.gallons > 0) lines.push(`Fuel: ${fmt(d.fuel.gallons)} gallons of ${fuel.name.toLowerCase()} (${fmt(r.weights.fuel)} lbs.).`);
+  if (d.fuel.gallons > 0) {
+    const dur = r.fuelUse?.durationHours;
+    lines.push(`Fuel: ${fmt(d.fuel.gallons)} gallons of ${fuel.name.toLowerCase()} (${fmt(r.weights.fuel)} lbs.)` +
+      (dur ? `; endurance ${Math.floor(dur)}h ${Math.round((dur - Math.floor(dur)) * 60)}m at ${fmt(r.fuelUse.gph, 2)} gph` : '') + '.');
+  }
   lines.push(`Occupancy: ${d.crew} crew, ${d.passengers} passengers; ${fmt(d.cargoCf)} cf cargo.`);
   return lines.join('\n');
 }

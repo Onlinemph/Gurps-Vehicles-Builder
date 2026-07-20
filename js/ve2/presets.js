@@ -20,7 +20,7 @@ export const VE2_PRESETS = [
       gasbag: { present: false, cf: 0 },
     },
     components: [
-      { name: 'gasoline engine, 40 kW', weight: 270, cost: 540, volume: 10.8, kwOut: 40, airBreathing: true, location: 'body' },
+      { name: 'gasoline engine, 40 kW', weight: 270, cost: 540, volume: 10.8, kwOut: 40, fuelGph: 1.8, airBreathing: true, location: 'body' },
       { name: 'wheeled drivetrain, 40 kW', weight: 120, cost: 480, volume: 4.8, kwIn: 40, groundKw: 40, location: 'body' },
       { name: 'fuel tank, 10 gal', weight: 5, cost: 20, volume: 1.5, location: 'body' },
       { name: 'lead-acid battery', weight: 60, cost: 60, volume: 0.5, location: 'body' },
@@ -28,7 +28,7 @@ export const VE2_PRESETS = [
       { name: '3 passenger seats (exposed)', weight: 90, cost: 150, volume: 40, location: 'body' },
       { name: 'tow hitch', weight: 10, cost: 10, volume: 0.1, location: 'body' },
     ],
-    crew: 1, passengers: 3, cargoCf: 20, emptySpaceCf: 0,
+    crew: 1, passengers: 3, exposedSeats: 4, cargoCf: 20, emptySpaceCf: 0,
     fuel: { type: 'gasoline', gallons: 10 },
     hardpoints: { count: 0, loadLbs: 0 },
     options: { improvedSuspension: false, improvedBrakes: false, allWheelSteering: false, allWheelDrive: true, smartwheels: false, rollStabilizers: false },
@@ -60,7 +60,7 @@ export const VE2_PRESETS = [
       gasbag: { present: false, cf: 0 },
     },
     components: [
-      { name: 'diesel engine, 900 kW', weight: 5400, cost: 27000, volume: 108, kwOut: 900, airBreathing: true, location: 'body' },
+      { name: 'diesel engine, 900 kW', weight: 5400, cost: 27000, volume: 108, kwOut: 900, fuelGph: 31.5, airBreathing: true, location: 'body' },
       { name: 'tracked drivetrain, 900 kW', weight: 4500, cost: 18000, volume: 90, kwIn: 900, groundKw: 900, location: 'body' },
       { name: 'fuel tanks, 350 gal', weight: 175, cost: 700, volume: 52, location: 'body' },
       { name: '120mm tank gun', weight: 4400, cost: 250000, volume: 88, location: 'turret0' },
@@ -92,7 +92,7 @@ export const VE2_PRESETS = [
       gasbag: { present: false, cf: 0 },
     },
     components: [
-      { name: 'gasoline engine, 200 kW', weight: 1200, cost: 4800, volume: 48, kwOut: 200, airBreathing: true, location: 'body' },
+      { name: 'gasoline engine, 200 kW', weight: 1200, cost: 4800, volume: 48, kwOut: 200, fuelGph: 8, airBreathing: true, location: 'body' },
       { name: 'hydrojet, 200 kW', weight: 500, cost: 4000, volume: 10, kwIn: 200, aquaticThrust: 2400, location: 'body' },
       { name: 'fuel tank, 80 gal', weight: 40, cost: 160, volume: 12, location: 'body' },
       { name: 'crew station (open)', weight: 50, cost: 250, volume: 15, location: 'body' },
@@ -121,7 +121,7 @@ export const VE2_PRESETS = [
       gasbag: { present: false, cf: 0 },
     },
     components: [
-      { name: 'gas turbine, 850 kW', weight: 1275, cost: 34000, volume: 25.5, kwOut: 850, airBreathing: true, location: 'body' },
+      { name: 'gas turbine, 850 kW', weight: 1275, cost: 34000, volume: 25.5, kwOut: 850, fuelGph: 46.75, airBreathing: true, location: 'body' },
       // Helicopter drivetrain: lift = 10 lbs/kW, thrust = 1.6 lbs/kW.
       { name: 'helicopter drivetrain, 800 kW', weight: 2400, cost: 32000, volume: 48, kwIn: 800, airThrust: 1280, staticLift: 8000, location: 'body' },
       { name: 'fuel tank, 90 gal', weight: 45, cost: 180, volume: 13.5, location: 'body' },

@@ -19,11 +19,13 @@ Two designers are included:
   170 yds, aMR 2.5, and so on — see `tests/ve2.test.mjs`).
 
   Covers: per-face armor with 30°/60° slope (DR multipliers, PD bonuses, and
-  the body-volume cost of slope), multiple turrets and superstructures (each
-  with its own volume, rotation, slope and DR), wheels/tracks/halftracks/
-  skids/legs, wings and rotors, masts and gasbags, hardpoints (performance
-  with and without stores), sample designs (jeep, MBT, speedboat,
-  helicopter), and a Markdown stat-block export.
+  the body-volume cost of slope), multiple turrets, superstructures and open
+  mounts (each with its own volume, rotation, slope and DR), wheels/tracks/
+  halftracks/skids/legs, wings and rotors, masts and gasbags, hardpoints
+  (performance with and without stores), fuel endurance (the sample jeep
+  reports 5h 33m, matching GVB's own output), exposed-crew drag, space
+  performance, sample designs (jeep, MBT, speedboat, helicopter), and a
+  Markdown stat-block export.
 
 Both designers can pull real components from the official **GURPS Vehicle
 Builder** program's data files via the GVB Library (see below).

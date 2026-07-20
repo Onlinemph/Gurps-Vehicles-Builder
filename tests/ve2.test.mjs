@@ -345,3 +345,58 @@ test('VE2 markdown export contains the key lines', async () => {
   assert.ok(md.includes('| Empty Wt. |'));
   assert.ok(md.includes('Hit Points'));
 });
+
+// --- Duration, open mounts, exposed seats, space ---------------------------
+test('jeep fuel duration matches the GVB manual (5h33m)', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { VE2_PRESETS } = await import('../js/ve2/presets.js');
+  const r = computeVe2(VE2_PRESETS.find((p) => p.name === 'TL6 Jeep'));
+  // 10 gallons / 1.8 gph = 5.56 hours; GVB reports "5 hours 33 minutes".
+  assert.ok(Math.abs(r.fuelUse.durationHours - 5.56) < 0.01, `duration ${r.fuelUse.durationHours}`);
+});
+
+test('open mounts: volume from components, excluded from structural area, HP ×2', async () => {
+  const { computeVe2, defaultVe2Design } = await import('../js/ve2/vehicle.js');
+  const d = defaultVe2Design();
+  d.components = [
+    { name: 'ballast', weight: 100, cost: 0, volume: 100, location: 'body' },
+    { name: 'HMG', weight: 130, cost: 14000, volume: 6, location: 'open0' },
+  ];
+  d.subassemblies.openMounts = [{ rotation: 'full' }];
+  const r = computeVe2(d);
+  assert.deepEqual(r.errors, [], r.errors.join('; '));
+  assert.ok(Math.abs(r.volumes.open0 - 7.2) < 0.01, `open volume ${r.volumes.open0}`); // 6 × 1.2
+  assert.ok(r.structuralArea < r.totalArea, 'open mount area excluded from structural');
+  assert.ok(r.hp.openMount1 > 0);
+
+  // Removing the mount's contents leaves an empty-mount warning.
+  const empty = structuredClone(d);
+  empty.components = empty.components.slice(0, 1);
+  assert.ok(computeVe2(empty).warnings.some((w) => w.includes('Open mount 1 is empty')));
+});
+
+test('exposed seats add aerial drag and slow flight', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { VE2_PRESETS } = await import('../js/ve2/presets.js');
+  const heli = structuredClone(VE2_PRESETS.find((p) => p.name.includes('Helicopter')));
+  const closed = computeVe2(heli);
+  heli.exposedSeats = 6;
+  const open = computeVe2(heli);
+  assert.ok(open.perf.aerial.topSpeed < closed.perf.aerial.topSpeed,
+    `${open.perf.aerial.topSpeed} !< ${closed.perf.aerial.topSpeed}`);
+});
+
+test('space performance reports sAccel from thrust', async () => {
+  const { computeVe2, defaultVe2Design } = await import('../js/ve2/vehicle.js');
+  const d = defaultVe2Design();
+  d.subassemblies.wheels.present = false;
+  d.computeSpace = true;
+  d.armor = { type: 'metalStandard', mode: 'overall', dr: 5, faces: null, otherDr: 0 };
+  d.components = [
+    { name: 'rocket engine', weight: 500, cost: 10000, volume: 10, airThrust: 4000, location: 'body' },
+    { name: 'crew station', weight: 50, cost: 250, volume: 15, location: 'body' },
+  ];
+  const r = computeVe2(d);
+  assert.ok(r.perf.space, 'space perf present');
+  assert.ok(Math.abs(r.perf.space.sAccelG - 4000 / r.weights.loaded) < 0.01);
+});

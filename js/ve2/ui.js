@@ -100,6 +100,8 @@ const BINDINGS = [
   ['s-gasbagcf', 'subassemblies.gasbag.cf', 'num'],
   ['f-crew', 'crew', 'num'],
   ['f-passengers', 'passengers', 'num'],
+  ['f-exposed', 'exposedSeats', 'num'],
+  ['f-space', 'computeSpace', 'bool'],
   ['f-cargocf', 'cargoCf', 'num'],
   ['f-emptycf', 'emptySpaceCf', 'num'],
   ['f-fueltype', 'fuel.type', 'text'],
@@ -146,6 +148,7 @@ function syncForm() {
   syncArmorMode();
   renderTurrets();
   renderSupers();
+  renderOpenMounts();
   renderComponents();
   syncLocationOptions();
 }
@@ -221,6 +224,36 @@ function renderSupers() {
   if (!design.subassemblies.superstructures?.length) wrap.innerHTML = '<p class="muted">No superstructures.</p>';
 }
 
+function renderOpenMounts() {
+  const wrap = $('open-list');
+  wrap.innerHTML = '';
+  (design.subassemblies.openMounts || []).forEach((m, i) => {
+    const row = document.createElement('div');
+    row.className = 'weapon-row';
+    row.innerHTML = `
+      <span class="weapon-name">Open mount ${i + 1}</span>
+      <span class="weapon-detail sub-edit">
+        <label>rotation <select data-k="rotation">
+          ${['none', 'limited', 'full'].map((rt) => `<option value="${rt}" ${m.rotation === rt ? 'selected' : ''}>${rt}</option>`).join('')}
+        </select></label>
+      </span>`;
+    row.querySelector('[data-k]').addEventListener('change', (e) => { m.rotation = e.target.value; render(); });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn small danger';
+    del.textContent = '✕';
+    del.addEventListener('click', () => {
+      design.subassemblies.openMounts.splice(i, 1);
+      design.components = design.components.filter((c) => c.location !== `open${i}`)
+        .map((c) => remapLocation(c, 'open', i));
+      renderOpenMounts(); syncLocationOptions(); renderComponents(); render();
+    });
+    row.appendChild(del);
+    wrap.appendChild(row);
+  });
+  if (!design.subassemblies.openMounts?.length) wrap.innerHTML = '<p class="muted">No open mounts.</p>';
+}
+
 // After deleting subassembly i, shift higher-numbered locations down.
 function remapLocation(c, prefix, deleted) {
   const m = String(c.location || '').match(new RegExp(`^${prefix}(\\d+)$`));
@@ -237,12 +270,18 @@ function initSubassemblyAdders() {
     design.subassemblies.superstructures.push({ volumeCf: 50, slopeDegrees: 0, dr: 0 });
     renderSupers(); syncLocationOptions(); render();
   });
+  $('open-add').addEventListener('click', () => {
+    if (!design.subassemblies.openMounts) design.subassemblies.openMounts = [];
+    design.subassemblies.openMounts.push({ rotation: 'full' });
+    renderOpenMounts(); syncLocationOptions(); render();
+  });
 }
 
 function syncLocationOptions() {
   const entries = [['body', 'Body'], ['wings', 'Wings']];
   (design.subassemblies.turrets || []).forEach((_, i) => entries.push([`turret${i}`, `Turret ${i + 1}`]));
   (design.subassemblies.superstructures || []).forEach((_, i) => entries.push([`super${i}`, `Superstructure ${i + 1}`]));
+  (design.subassemblies.openMounts || []).forEach((_, i) => entries.push([`open${i}`, `Open mount ${i + 1}`]));
   const current = $('c-location').value || 'body';
   fillSelect($('c-location'), entries, entries.some(([v]) => v === current) ? current : 'body');
 }
@@ -251,8 +290,11 @@ function syncLocationOptions() {
 function locationLabel(loc) {
   if (!loc || loc === 'body') return '';
   if (loc === 'wings') return 'in wings';
-  const m = loc.match(/^(turret|super)(\d+)$/);
-  if (m) return `in ${m[1] === 'turret' ? 'turret' : 'superstructure'} ${Number(m[2]) + 1}`;
+  const m = loc.match(/^(turret|super|open)(\d+)$/);
+  if (m) {
+    const kind = { turret: 'turret', super: 'superstructure', open: 'open mount' }[m[1]];
+    return `in ${kind} ${Number(m[2]) + 1}`;
+  }
   return `in ${loc}`;
 }
 
@@ -262,6 +304,7 @@ function renderComponents() {
   (design.components || []).forEach((c, i) => {
     const bits = [
       `${fmt(c.weight)} lb`, `$${fmt(c.cost)}`, `${fmt(c.volume, 2)} cf`,
+      c.fuelGph ? `${fmt(c.fuelGph, 2)} gph` : '',
       c.kwIn ? `needs ${fmt(c.kwIn, 1)} kW` : '',
       c.kwOut ? `puts out ${fmt(c.kwOut, 1)} kW` : '',
       c.groundKw ? `${fmt(c.groundKw, 1)} kW ground` : '',
@@ -292,6 +335,7 @@ function componentFormValue() {
     weight: Number($('c-weight').value) || 0,
     cost: Number($('c-cost').value) || 0,
     volume: Number($('c-volume').value) || 0,
+    fuelGph: Number($('c-gph').value) || 0,
     kwIn: Number($('c-kwin').value) || 0,
     kwOut: Number($('c-kwout').value) || 0,
     groundKw: Number($('c-groundkw').value) || 0,
@@ -306,7 +350,7 @@ function componentFormValue() {
 
 function clearComponentForm() {
   $('c-name').value = '';
-  for (const id of ['c-weight', 'c-cost', 'c-volume', 'c-kwin', 'c-kwout', 'c-groundkw', 'c-aqua', 'c-air', 'c-lift', 'c-contragrav']) $(id).value = 0;
+  for (const id of ['c-weight', 'c-cost', 'c-volume', 'c-gph', 'c-kwin', 'c-kwout', 'c-groundkw', 'c-aqua', 'c-air', 'c-lift', 'c-contragrav']) $(id).value = 0;
   $('c-airbreathing').checked = false;
 }
 
@@ -329,6 +373,8 @@ function prefillFromGvb(item, detail) {
   $('c-volume').value = round2(result.volume);
   $('c-kwin').value = round2(result.powerIn);
   $('c-kwout').value = round2(result.powerOut);
+  // GVB fuel consumption is usually gph; other units need manual conversion.
+  $('c-gph').value = (!template.fuelUnit || template.fuelUnit === 'gph') ? round2(result.fuelConsumption) : 0;
 
   const hay = `${template.class} ${template.name}`.toLowerCase();
   const aquatic = /hydro|screw|paddle|oar|aquatic|marine|swim/.test(hay);
@@ -363,7 +409,7 @@ function render() {
   html += '<h3>Size &amp; Structure</h3>';
   html += row('Body volume', `${fmt(r.volumes.body, 2)} cf`);
   for (const [k, v] of Object.entries(r.volumes)) {
-    if (k !== 'body' && v > 0) html += row(`${prettyKey(k)} volume`, `${fmt(v, 2)} cf`);
+    if (k !== 'body' && v > 0) html += row(`${volumeLabel(k)} volume`, `${fmt(v, 2)} cf`);
   }
   html += row('Total volume / Size Modifier', `${fmt(r.totalVolume, 1)} cf · SM ${r.stats.sm >= 0 ? '+' : ''}${r.stats.sm}`);
   html += row('Surface area (total / structural)', `${fmt(r.totalArea)} / ${fmt(r.structuralArea)} sf`);
@@ -401,6 +447,10 @@ function render() {
   if (r.weights.submerged > 0) html += row('Submerged weight', `${fmt(r.weights.submerged)} lbs`);
   if (r.power.needed > 0 || r.power.available > 0) {
     html += row('Power', `${fmt(r.power.needed, 1)} kW needed / ${fmt(r.power.available, 1)} kW available`);
+  }
+  if (r.fuelUse.gph > 0) {
+    html += row('Fuel use', `${fmt(r.fuelUse.gph, 2)} gph` +
+      (r.fuelUse.durationHours !== null ? ` · duration ${formatDuration(r.fuelUse.durationHours)}` : ''));
   }
 
   html += '<h3>Statistics</h3>';
@@ -442,6 +492,12 @@ function render() {
     if (a.withStores) html += row('With stores', `stall ${a.withStores.stallSpeed}, top ${a.withStores.topSpeed} mph, aAccel ${a.withStores.aAccel}`);
     if (!a.canFly) html += row('Flight', '⚠️ cannot take off unaided');
   }
+  if (r.perf.space) {
+    const s = r.perf.space;
+    html += '<h3>Space Performance</h3>';
+    html += row('sAccel', `${s.sAccelG} G (${s.sAccel} mph/s)`);
+    html += row('sMR', s.sMR);
+  }
 
   $('sheet-body').innerHTML = html;
 
@@ -452,8 +508,24 @@ function render() {
   $('problems-card').style.display = (r.errors.length || r.warnings.length) ? '' : 'none';
 }
 
+function formatDuration(hours) {
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return m === 60 ? `${h + 1}h 0m` : `${h}h ${m}m`;
+}
+
+function volumeLabel(key) {
+  const m = key.match(/^(turret|super|open)(\d+)$/);
+  if (m) {
+    const kind = { turret: 'Turret', super: 'Superstructure', open: 'Open mount' }[m[1]];
+    return `${kind} ${Number(m[2]) + 1}`;
+  }
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 function prettyKey(s) {
-  return s.charAt(0).toUpperCase() + s.slice(1).replace(/(\d+)$/, ' $1').replace('super ', 'superstructure ');
+  const spaced = s.replace(/openMount/, 'open mount').replace(/(\d+)$/, ' $1');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 // --- Toolbar ---------------------------------------------------------------
