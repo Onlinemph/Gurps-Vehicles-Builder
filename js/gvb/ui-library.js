@@ -216,6 +216,6 @@ function addToDesign() {
     note: `GVB ${t.source}` +
       (lastResult.powerIn ? ` · needs ${fmt(lastResult.powerIn)} kW` : '') +
       (lastResult.powerOut ? ` · provides ${fmt(lastResult.powerOut)} kW` : ''),
-  });
+  }, { template: t, inputs, result: lastResult });
   $('gvb-modal').close();
 }

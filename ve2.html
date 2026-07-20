@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GURPS Vehicles 2e Designer</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🛠️</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>GURPS Vehicles 2e Designer</h1>
+    <p>The full book design system: volumes → structure → armor → performance. <a href="index.html" style="color:#fff">↩ streamlined designer</a></p>
+  </div>
+  <div class="toolbar">
+    <select id="saved-select" title="Load a saved design"></select>
+    <button class="btn" id="btn-new">New</button>
+    <button class="btn primary" id="btn-save">Save</button>
+    <button class="btn" id="btn-import-json">Import</button>
+    <button class="btn" id="btn-export-json">Export JSON</button>
+    <button class="btn" id="btn-gvb">GVB Library</button>
+    <button class="btn" id="btn-print">Print</button>
+    <input type="file" id="import-file" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<div id="flash"></div>
+
+<main class="layout">
+  <section class="panel form-panel">
+
+    <div class="card">
+      <h2>1 · Basics</h2>
+      <div class="grid2">
+        <label>Vehicle name <input type="text" id="f-name"></label>
+        <label>Tech Level <input type="number" id="f-tl" min="0" max="16" step="1"></label>
+        <label>Maneuver controls <select id="f-controls"></select></label>
+        <label>Streamlining <select id="f-streamlining"></select></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2 · Hull &amp; Features</h2>
+      <div class="acc-list">
+        <label class="acc-row"><input type="checkbox" id="f-flotation"> <span><b>Flotation hull</b> <small>required for watercraft</small></span></label>
+        <label class="acc-row"><input type="checkbox" id="f-submersible"> <span><b>Submersible hull</b> <small>includes sealed &amp; waterproof</small></span></label>
+        <label class="acc-row"><input type="checkbox" id="f-sealed"> <span><b>Sealed</b> <small>airtight (needs DR 1+)</small></span></label>
+        <label class="acc-row"><input type="checkbox" id="f-catamaran"> <span><b>Catamaran/trimaran hull</b></span></label>
+        <label class="acc-row"><input type="checkbox" id="f-liftingbody"> <span><b>Lifting body</b> <small>needs Very Good+ streamlining</small></span></label>
+        <label class="acc-row"><input type="checkbox" id="f-responsive"> <span><b>Responsive structure</b> <small>TL8+</small></span></label>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <label>Hydrodynamic lines <select id="f-hydrolines"></select></label>
+        <label>Body slope (total degrees, all faces) <input type="number" id="f-bodyslope" min="0" max="240" step="30"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3 · Structure</h2>
+      <div class="grid3">
+        <label>Frame strength <select id="f-frame"></select></label>
+        <label>Materials <select id="f-material"></select></label>
+        <label>Special structure <select id="f-special"></select></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>4 · Armor (overall)</h2>
+      <div class="grid2">
+        <label>Armor type <select id="f-armortype"></select></label>
+        <label>DR <input type="number" id="f-dr" min="0" step="1"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>5 · Subassemblies</h2>
+      <div class="grid3">
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-wheels"> Wheels</span></label>
+        <label>Wheel type <select id="s-wheeltype"></select></label>
+        <label>Wheel count <input type="number" id="s-wheelcount" min="1" max="24" step="1"></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-wheelretract"> Retractable wheels</span></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-tracks"> Tracks</span></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-halftracks"> Halftracks</span></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-skids"> Skids</span></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-wings"> Wings</span></label>
+        <label>Wing type <select id="s-wingtype"></select></label>
+        <label>Wing volume (× body vol., per wing) <input type="number" id="s-wingfrac" min="0.02" max="0.5" step="0.01"></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-rotors"> Rotors</span></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-turret"> Turret</span></label>
+        <label>Turret volume (cf) <input type="number" id="s-turretvol" min="0.5" step="0.5"></label>
+        <label>Turret rotation <select id="s-turretrot"></select></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-masts"> Masts</span></label>
+        <label>Mast height (ft) <input type="number" id="s-mastheight" min="5" step="5"></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-gasbag"> Gasbag</span></label>
+        <label>Gasbag volume (cf) <input type="number" id="s-gasbagcf" min="0" step="100"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>6 · Components</h2>
+      <div id="component-list"></div>
+      <h3>Add component</h3>
+      <div class="grid3">
+        <label>Name <input type="text" id="c-name" placeholder="e.g. gasoline engine"></label>
+        <label>Weight (lbs) <input type="number" id="c-weight" step="any" value="0"></label>
+        <label>Cost ($) <input type="number" id="c-cost" step="any" value="0"></label>
+        <label>Volume (cf) <input type="number" id="c-volume" step="any" value="0"></label>
+        <label>Power needed (kW) <input type="number" id="c-kwin" step="any" value="0"></label>
+        <label>Power output (kW) <input type="number" id="c-kwout" step="any" value="0"></label>
+        <label>Ground motive power (kW) <input type="number" id="c-groundkw" step="any" value="0"></label>
+        <label>Aquatic thrust (lbs) <input type="number" id="c-aqua" step="any" value="0"></label>
+        <label>Aerial thrust (lbs) <input type="number" id="c-air" step="any" value="0"></label>
+        <label>Static lift (lbs) <input type="number" id="c-lift" step="any" value="0"></label>
+        <label>Contragrav lift (lbs) <input type="number" id="c-contragrav" step="any" value="0"></label>
+        <label>Location <select id="c-location">
+          <option value="body">Body</option><option value="turret">Turret</option><option value="wings">Wings</option>
+        </select></label>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <label class="inline" style="font-weight:400"><input type="checkbox" id="c-airbreathing"> air-breathing (unusable submerged)</label>
+        <button class="btn primary" id="c-add" type="button">Add component</button>
+      </div>
+      <p class="muted">Tip: use the <b>GVB Library</b> button (toolbar) to pull real components
+      from the official data files — their stats prefill this form.</p>
+    </div>
+
+    <div class="card">
+      <h2>7 · Crew, Payload &amp; Fuel</h2>
+      <div class="grid3">
+        <label>Crew <input type="number" id="f-crew" min="0" step="1"></label>
+        <label>Passengers <input type="number" id="f-passengers" min="0" step="1"></label>
+        <label>Cargo space (cf) <input type="number" id="f-cargocf" min="0" step="1"></label>
+        <label>Extra empty space (cf) <input type="number" id="f-emptycf" min="0" step="1"></label>
+        <label>Fuel type <select id="f-fueltype"></select></label>
+        <label>Fuel (gallons) <input type="number" id="f-fuelgal" min="0" step="1"></label>
+      </div>
+      <p class="muted">Remember to add crew stations, seats, engines, drivetrains and fuel
+      tanks as components — this section only counts people and fuel weight.</p>
+    </div>
+
+    <div class="card">
+      <h2>8 · Options</h2>
+      <div class="acc-list">
+        <label class="acc-row"><input type="checkbox" id="o-suspension"> <span><b>Improved suspension</b></span></label>
+        <label class="acc-row"><input type="checkbox" id="o-brakes"> <span><b>Improved brakes</b></span></label>
+        <label class="acc-row"><input type="checkbox" id="o-aws"> <span><b>All-wheel steering</b></span></label>
+        <label class="acc-row"><input type="checkbox" id="o-awd"> <span><b>All-wheel drive</b></span></label>
+        <label class="acc-row"><input type="checkbox" id="o-smartwheels"> <span><b>Smartwheels</b></span></label>
+        <label class="acc-row"><input type="checkbox" id="o-rollstab"> <span><b>Roll stabilizers</b></span></label>
+      </div>
+    </div>
+
+  </section>
+
+  <section class="panel output-panel" id="print-area">
+    <div class="card sheet">
+      <h2 id="sheet-name">Vehicle</h2>
+      <p class="sub" id="sheet-sub"></p>
+      <div id="sheet-body"></div>
+    </div>
+    <div class="card" id="problems-card" style="display:none">
+      <h2>Problems</h2>
+      <ul id="problems" class="problems"></ul>
+    </div>
+  </section>
+</main>
+
+<!-- GVB Library modal (same as the streamlined designer) -->
+<dialog id="gvb-modal" class="gvb-modal">
+  <h2>GVB Library — official component data</h2>
+  <p class="muted">Load <code>.rep</code> repository files from your copy of the
+  <i>GURPS Vehicle Builder</i> program. Selecting “Add to design” prefills the
+  component form; check the thrust/lift assignments before adding.</p>
+  <div class="gvb-toolbar">
+    <label class="btn primary gvb-file-btn">Load .rep files…
+      <input type="file" id="gvb-files" accept=".rep" multiple hidden>
+    </label>
+    <input type="search" id="gvb-search" placeholder="Search components…">
+    <span class="muted" id="gvb-status"></span>
+  </div>
+  <div class="gvb-body">
+    <div id="gvb-list" class="gvb-list"></div>
+    <div id="gvb-detail" class="gvb-detail"><p class="muted">Select a component on the left.</p></div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn" id="gvb-close">Close</button>
+  </div>
+</dialog>
+
+<script type="module" src="js/ve2/ui.js"></script>
+</body>
+</html>

@@ -1,11 +1,25 @@
 # GURPS Vehicles Builder
 
-A fast, friendly, **zero-dependency** web app for designing vehicles and getting
-a GURPS 4e-style stat block instantly — ST/HP, Hnd/SR, HT, Move, LWt., Load,
-SM, Occ., DR, Range, Cost, and Locations, live as you tweak the design.
+A fast, friendly, **zero-dependency** web app for designing GURPS vehicles.
+No build step, no server, no accounts. Open it in a browser (or host the repo
+on GitHub Pages) and start designing.
 
-No build step, no server, no accounts. Open `index.html` in a browser (or host
-the repo on GitHub Pages) and start designing.
+Two designers are included:
+
+- **`index.html` — Streamlined designer.** An original, easy design system that
+  produces GURPS 4e-style stat blocks instantly (ST/HP, Hnd/SR, HT, Move,
+  LWt., Load, SM, Occ., DR, Range, Cost, Locations).
+- **`ve2.html` — GURPS Vehicles 2e designer.** A faithful implementation of the
+  *GURPS Vehicles, Second Edition* design sequence: component volumes → body
+  and subassembly volumes → surface areas → structure → armor → hit points →
+  weights → statistics (SM, HT, price) → ground / water / submerged / aerial
+  performance, with the book's own formulas and rounding rules. The engine is
+  validated against the book's worked example (the Kitty Hawk: structure
+  972 lbs/$97,200, body 188 HP, ground 185 mph, water drag 79, crush depth
+  170 yds, aMR 2.5, and so on — see `tests/ve2.test.mjs`).
+
+Both designers can pull real components from the official **GURPS Vehicle
+Builder** program's data files via the GVB Library (see below).
 
 ## Features
 

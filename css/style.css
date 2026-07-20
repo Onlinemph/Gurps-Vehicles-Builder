@@ -242,6 +242,19 @@ input:disabled { background: #eee7d8; color: var(--muted); }
 .help-panel ul { padding-left: 20px; font-size: 13.5px; }
 .loc-legend { columns: 2; }
 
+/* ------------------------------------------------ VE2 designer */
+.inline-check { justify-content: flex-end; }
+.inline-check .inline { font-weight: 600; }
+.inline-check input { width: auto; }
+.sheet h3 {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent);
+  border-bottom: 1px dashed var(--line);
+}
+
 /* ------------------------------------------------ GVB library modal */
 .gvb-modal { width: min(1080px, 96vw); }
 .gvb-toolbar {
