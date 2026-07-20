@@ -14,6 +14,7 @@ import {
 import { downloadText, safeFilename, toMarkdown } from './export.js';
 import { PRESETS } from './presets.js';
 import { deleteDesign, listSaved, loadDesign, saveDesign } from './storage.js';
+import { initGvbLibrary } from './gvb/ui-library.js';
 
 let design = defaultDesign();
 let lastResult = null;
@@ -149,6 +150,7 @@ function refreshDynamicForm() {
 
   renderAccessories();
   renderWeapons();
+  renderEquipment();
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +180,55 @@ function renderAccessories() {
   }
   // Drop selected accessories that no longer apply to this chassis.
   design.accessories = design.accessories.filter((k) => ACCESSORIES[k] && accessoryAllowed(ACCESSORIES[k], design));
+}
+
+// ---------------------------------------------------------------------------
+// Equipment (custom gear and GVB library components)
+// ---------------------------------------------------------------------------
+function renderEquipment() {
+  const wrap = $('equipment-list');
+  wrap.innerHTML = '';
+  (design.equipment || []).forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'weapon-row';
+    row.innerHTML = `
+      <span class="weapon-name">${escapeHtml(item.name)}</span>
+      <span class="weapon-detail">${fmtLbs(item.weight)} · ${fmtCost(item.cost)}${item.note ? ' · ' + escapeHtml(item.note) : ''}</span>`;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn small danger';
+    del.textContent = '✕';
+    del.title = 'Remove item';
+    del.addEventListener('click', () => { design.equipment.splice(i, 1); renderEquipment(); render(); });
+    row.appendChild(del);
+    wrap.appendChild(row);
+  });
+  if (!design.equipment || !design.equipment.length) {
+    wrap.innerHTML = '<p class="muted">No extra equipment.</p>';
+  }
+}
+
+function addEquipment(item) {
+  if (!design.equipment) design.equipment = [];
+  design.equipment.push(item);
+  renderEquipment();
+  render();
+  flash(`Added “${item.name}”.`);
+}
+
+function initEquipmentAdder() {
+  $('equip-add').addEventListener('click', () => {
+    const name = $('equip-name').value.trim() || 'Custom equipment';
+    addEquipment({
+      name,
+      weight: Number($('equip-weight').value) || 0,
+      cost: Number($('equip-cost').value) || 0,
+      note: '',
+    });
+    $('equip-name').value = '';
+    $('equip-weight').value = '';
+    $('equip-cost').value = '';
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -292,13 +343,15 @@ function render() {
     ['Structure', w.structure], ['Powerplant', w.engine],
     ['Batteries', w.battery], ['Fuel', w.fuel], ['Armor', w.armor],
     ['Seats & controls', w.seats], ['Accessories', w.accessories],
-    ['Weapons', w.weapons], ['Occupants', w.occupants], ['Cargo', w.cargo],
+    ['Equipment', w.equipment], ['Weapons', w.weapons],
+    ['Occupants', w.occupants], ['Cargo', w.cargo],
   ], fmtLbs, w.loaded);
 
   $('cost-breakdown').innerHTML = breakdownRows([
     ['Frame', c.frame], ['Powerplant', c.engine], ['Batteries', c.battery],
     ['Armor', c.armor], ['Seats & controls', c.seats],
-    ['Accessories', c.accessories], ['Weapons', c.weapons],
+    ['Accessories', c.accessories], ['Equipment', c.equipment],
+    ['Weapons', c.weapons],
   ], fmtCost, c.subtotal) +
     `<div class="bd-row total"><span>Total (incl. 20% assembly)</span><span>${fmtCost(c.total)}</span></div>`;
 
@@ -332,6 +385,7 @@ function replaceDesign(next) {
   design.armor = { ...defaultDesign().armor, ...(next.armor || {}) };
   design.accessories = [...(next.accessories || [])];
   design.weapons = structuredClone(next.weapons || []);
+  design.equipment = structuredClone(next.equipment || []);
   syncFormFromDesign();
   render();
 }
@@ -436,6 +490,8 @@ function flash(msg) {
 initStaticControls();
 bindInputs();
 initWeaponAdder();
+initEquipmentAdder();
+initGvbLibrary({ vehicleTl: () => design.tl, addEquipment });
 initToolbar();
 refreshSavedList();
 syncFormFromDesign();

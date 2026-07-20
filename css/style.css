@@ -242,6 +242,75 @@ input:disabled { background: #eee7d8; color: var(--muted); }
 .help-panel ul { padding-left: 20px; font-size: 13.5px; }
 .loc-legend { columns: 2; }
 
+/* ------------------------------------------------ GVB library modal */
+.gvb-modal { width: min(1080px, 96vw); }
+.gvb-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.gvb-toolbar input[type="search"] { flex: 1; min-width: 160px; width: auto; }
+.gvb-file-btn { display: inline-block; cursor: pointer; }
+.gvb-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(300px, 1.6fr);
+  gap: 14px;
+  min-height: 300px;
+}
+@media (max-width: 700px) { .gvb-body { grid-template-columns: 1fr; } }
+.gvb-list {
+  max-height: 55vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+}
+.gvb-group {
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  padding: 8px 4px 2px;
+}
+.gvb-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 3px 6px;
+  font-size: 13.5px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.gvb-item:hover { background: #f1ead9; }
+.gvb-item.sel { background: var(--accent); color: #fff; }
+.gvb-item small { color: inherit; opacity: 0.65; }
+.gvb-detail {
+  max-height: 55vh;
+  overflow-y: auto;
+  padding: 2px 6px;
+}
+.gvb-detail h3 { margin: 0 0 8px; font-size: 15px; }
+.gvb-detail h3 small { color: var(--muted); font-weight: 400; }
+.gvb-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px 12px;
+  margin-bottom: 6px;
+}
+.gvb-opt-head { margin: 10px 0 4px; font-size: 12.5px; font-weight: 700; }
+.gvb-opts { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.gvb-opts .inline { font-weight: 400; font-size: 13px; flex-direction: row; align-items: center; }
+.gvb-opts input { width: auto; }
+.gvb-outputs { margin-top: 10px; }
+.gvb-desc { white-space: pre-line; margin-top: 10px; }
+
 /* ------------------------------------------------ modal & flash */
 dialog {
   border: 1px solid var(--line);

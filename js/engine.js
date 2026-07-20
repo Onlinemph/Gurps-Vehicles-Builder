@@ -33,6 +33,7 @@ export function defaultDesign() {
     cargoLbs: 300,
     accessories: ['headlights', 'radio'],
     weapons: [],           // { name, weight, cost, dmg, mount, qty }
+    equipment: [],         // { name, weight, cost, note } — custom/GVB gear
   };
 }
 
@@ -161,6 +162,13 @@ export function computeStats(design) {
     accCost += acc.cost;
   }
 
+  let equipW = 0;
+  let equipCost = 0;
+  for (const item of design.equipment || []) {
+    equipW += Math.max(Number(item.weight) || 0, 0);
+    equipCost += Math.max(Number(item.cost) || 0, 0);
+  }
+
   let weaponsW = 0;
   let weaponsCost = 0;
   let hasTurret = false;
@@ -179,7 +187,7 @@ export function computeStats(design) {
 
   // --- Weight totals -------------------------------------------------------
   const cargoLbs = Math.max(Number(design.cargoLbs) || 0, 0);
-  const emptyW = structureW + engineW + batteryW + armorW + seatsW + accW + weaponsW;
+  const emptyW = structureW + engineW + batteryW + armorW + seatsW + accW + weaponsW + equipW;
   const occupantsW = (crew + passengers) * OCCUPANT_WEIGHT;
   const payloadW = occupantsW + cargoLbs;
   const loadedW = emptyW + fuelW + payloadW;
@@ -256,7 +264,7 @@ export function computeStats(design) {
   }
 
   // --- Cost ----------------------------------------------------------------
-  const subtotal = frameCost + engineCost + batteryCost + armorCost + seatsCost + accCost + weaponsCost;
+  const subtotal = frameCost + engineCost + batteryCost + armorCost + seatsCost + accCost + weaponsCost + equipCost;
   const totalCost = sig3(subtotal * 1.2); // 20% assembly & integration
 
   // --- Presentation strings ------------------------------------------------
@@ -275,6 +283,7 @@ export function computeStats(design) {
     weights: {
       structure: structureW, engine: engineW, battery: batteryW, fuel: fuelW,
       armor: armorW, seats: seatsW, accessories: accW, weapons: weaponsW,
+      equipment: equipW,
       occupants: occupantsW, cargo: cargoLbs,
       empty: emptyW, payload: payloadW, loaded: loadedW,
       maxLWt, remaining: maxLWt - loadedW,
@@ -282,6 +291,7 @@ export function computeStats(design) {
     costs: {
       frame: frameCost, engine: engineCost, battery: batteryCost, armor: armorCost,
       seats: seatsCost, accessories: accCost, weapons: weaponsCost,
+      equipment: equipCost,
       subtotal, total: totalCost,
     },
     stats: {

@@ -28,6 +28,13 @@ the repo on GitHub Pages) and start designing.
   light airplane, helicopter, steam launch, electric runabout.
 - **Save/load** designs in your browser, **import/export JSON**, **export a
   Markdown stat block**, and a print-friendly sheet.
+- **GVB Library**: if you own SJ Games' discontinued *GURPS Vehicle Builder*
+  program, load its `.rep` repository files (≈1,900 components covering GURPS
+  Vehicles 2e plus the WWII, Ogre, Mecha, Robots, Ultra-Tech, Space, and
+  Traveller data sets) directly in the browser. Components are computed with
+  the exact formulas from the data files and added to your design as
+  equipment. No game data ships with this repo — you load your own files, and
+  parsing happens entirely client-side.
 - **"How it works" panel** documenting every formula, so nothing is a black box
   and everything is house-ruleable.
 
@@ -87,8 +94,32 @@ js/ui.js            — form binding and rendering
 js/presets.js       — sample designs
 js/export.js        — Markdown/JSON export
 js/storage.js       — localStorage design library
-tests/              — engine unit tests (node --test)
+js/gvb/parser.js    — parser for GVB .rep/.gvv files (Delphi TPF0 streams)
+js/gvb/formula.js   — evaluator for GVB's component formula language
+js/gvb/library.js   — template normalization + evaluation
+js/gvb/ui-library.js— the GVB Library import/browse modal
+tools/parse-rep.mjs — CLI: dump a .rep/.gvv file as JSON
+tests/              — engine + GVB parser/formula tests (node --test)
 ```
+
+### The GVB formula language
+
+GVB component templates carry their math as formula strings, e.g.
+
+```
+vQuantity * IIF(Checkbox(1) {AWD}, 1.5, 1) *
+DECODE(RANGE(vTL,6,8), 6, 10, 7, 7.5, 8, 5, 0)
+```
+
+`js/gvb/formula.js` implements it: arithmetic with `^`, comparisons,
+`|`/`&`/`!` logic, `{comments}`, `IIF`, `DECODE` (key/value pairs with an
+optional trailing default), `RANGE` (clamp), `Radio(n)`/`Checkbox(n)` for the
+template's option state, and the math functions found in the data (`SQRT`,
+`SQR`, `CUBE`, `CRT`, `ROUND`, `ROUNDN`, `MIN`, `MAX`, `SELECT`, …).
+Across all 48 stock repositories, 1,873 of 1,874 templates evaluate without
+errors (the one failure is a missing comma in the original data). Formulas
+that reference vehicle-level values (`vVehicle_Weight`, `vBODY_HP`, …) prompt
+for those numbers in the UI.
 
 ## Legal
 

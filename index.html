@@ -23,6 +23,7 @@
     <button class="btn" id="btn-import-json">Import</button>
     <button class="btn" id="btn-export-json">Export JSON</button>
     <button class="btn" id="btn-export-md">Stat Block</button>
+    <button class="btn" id="btn-gvb" title="Import component data from the official GURPS Vehicle Builder program">GVB Library</button>
     <button class="btn" id="btn-print">Print</button>
     <button class="btn" id="btn-help">How it works</button>
     <input type="file" id="import-file" accept=".json,application/json" hidden>
@@ -130,7 +131,20 @@
     </div>
 
     <div class="card">
-      <h2>6 · Weapons</h2>
+      <h2>6 · Equipment</h2>
+      <div id="equipment-list"></div>
+      <div class="weapon-adder equip-adder">
+        <input type="text" id="equip-name" placeholder="Custom item name">
+        <input type="number" id="equip-weight" min="0" step="any" placeholder="Weight (lbs)">
+        <input type="number" id="equip-cost" min="0" step="any" placeholder="Cost ($)">
+        <button class="btn primary" id="equip-add" type="button">Add</button>
+      </div>
+      <p class="muted">Add anything with a weight and a cost — or pull real components
+      from the official GVB data files via the <b>GVB Library</b> button in the toolbar.</p>
+    </div>
+
+    <div class="card">
+      <h2>7 · Weapons</h2>
       <div id="weapon-list"></div>
       <div class="weapon-adder">
         <select id="weapon-select"></select>
@@ -209,6 +223,16 @@
       <li><b>Cost</b> = structure + engine + armor + seats + gear + weapons, +20% assembly, rounded to 3 significant figures.</li>
     </ul>
 
+    <h3>The GVB Library</h3>
+    <p>If you own Steve Jackson Games' discontinued <i>GURPS Vehicle Builder</i>
+    program, the <b>GVB Library</b> toolbar button lets you load its
+    <code>.rep</code> repository files right here in the browser — about 1,900
+    components across GURPS Vehicles 2e and its supplements. Each component is
+    computed with the exact formulas from the data files (with its original
+    options, access-space choices, and TL scaling) and added to your design as
+    an equipment line. Nothing is uploaded anywhere, and no game data is
+    distributed with this tool: you load the files you own.</p>
+
     <h3>Locations codes</h3>
     <ul id="loc-legend" class="loc-legend"></ul>
 
@@ -220,6 +244,29 @@
     It is not published, endorsed, or approved by Steve Jackson Games.</p>
   </div>
 </aside>
+
+<!-- ================= GVB Library modal ================= -->
+<dialog id="gvb-modal" class="gvb-modal">
+  <h2>GVB Library — official component data</h2>
+  <p class="muted">Load <code>.rep</code> repository files from your copy of the
+  <i>GURPS Vehicle Builder</i> program (the <code>repositories</code> folder).
+  Components are evaluated with the exact formulas from the data files.
+  Nothing is uploaded — parsing happens entirely in your browser.</p>
+  <div class="gvb-toolbar">
+    <label class="btn primary gvb-file-btn">Load .rep files…
+      <input type="file" id="gvb-files" accept=".rep" multiple hidden>
+    </label>
+    <input type="search" id="gvb-search" placeholder="Search components…">
+    <span class="muted" id="gvb-status"></span>
+  </div>
+  <div class="gvb-body">
+    <div id="gvb-list" class="gvb-list"></div>
+    <div id="gvb-detail" class="gvb-detail"><p class="muted">Select a component on the left.</p></div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn" id="gvb-close">Close</button>
+  </div>
+</dialog>
 
 <!-- ================= Markdown modal ================= -->
 <dialog id="md-modal">
