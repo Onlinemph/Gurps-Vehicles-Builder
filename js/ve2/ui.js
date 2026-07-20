@@ -7,10 +7,13 @@ import {
   ARMOR_TYPES, FRAME_STRENGTHS, FUELS, HYDRO_LINES, MATERIALS,
   SPECIAL_STRUCTURES, STREAMLINING,
 } from './tables.js';
-import { computeVe2, defaultVe2Design } from './vehicle.js';
+import { BODY_FACE_KEYS, computeVe2, defaultVe2Design, migrateVe2Design } from './vehicle.js';
+import { toVe2Markdown } from './export.js';
+import { VE2_PRESETS } from './presets.js';
 import { initGvbLibrary } from '../gvb/ui-library.js';
 
 let design = defaultVe2Design();
+let lastResult = null;
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -45,15 +48,12 @@ function initStatic() {
     ['standard', 'Standard'], ['stol', 'STOL'], ['highAgility', 'High-agility'],
     ['biplane', 'Biplane'], ['triplane', 'Triplane'], ['stub', 'Stub wings'],
   ], design.subassemblies.wings.type);
-  fillSelect($('s-turretrot'), [
-    ['full', 'Full rotation'], ['limited', 'Limited rotation'],
-    ['popFull', 'Pop turret, full rotation'], ['popLimited', 'Pop turret, limited'],
-  ], design.subassemblies.turret.rotation);
   fillSelect($('f-fueltype'), Object.entries(FUELS).map(([k, v]) => [k, v.name]), design.fuel.type);
+  fillSelect($('preset-select'), [['', '— Load a sample design —'], ...VE2_PRESETS.map((p, i) => [String(i), p.name])], '');
 }
 
 // --- Binding ---------------------------------------------------------------
-const getPath = (obj, path) => path.split('.').reduce((o, k) => o[k], obj);
+const getPath = (obj, path) => path.split('.').reduce((o, k) => o?.[k], obj);
 function setPath(obj, path, value) {
   const keys = path.split('.');
   const last = keys.pop();
@@ -61,7 +61,6 @@ function setPath(obj, path, value) {
 }
 
 const BINDINGS = [
-  // [element id, design path, kind]
   ['f-name', 'name', 'text'],
   ['f-tl', 'tl', 'num'],
   ['f-controls', 'controls', 'text'],
@@ -73,12 +72,15 @@ const BINDINGS = [
   ['f-liftingbody', 'features.liftingBody', 'bool'],
   ['f-responsive', 'features.responsive', 'bool'],
   ['f-hydrolines', 'features.hydroLines', 'text'],
-  ['f-bodyslope', 'bodySlopeDegrees', 'num'],
   ['f-frame', 'structure.frame', 'text'],
   ['f-material', 'structure.material', 'text'],
   ['f-special', 'structure.special', 'text'],
   ['f-armortype', 'armor.type', 'text'],
+  ['f-armormode', 'armor.mode', 'text'],
   ['f-dr', 'armor.dr', 'num'],
+  ['f-otherdr', 'armor.otherDr', 'num'],
+  ...BODY_FACE_KEYS.map((f) => [`af-${f}`, `armor.faces.${f}.dr`, 'num']),
+  ...['front', 'back', 'left', 'right'].map((f) => [`as-${f}`, `armor.faces.${f}.slope`, 'num']),
   ['s-wheels', 'subassemblies.wheels.present', 'bool'],
   ['s-wheeltype', 'subassemblies.wheels.type', 'text'],
   ['s-wheelcount', 'subassemblies.wheels.count', 'num'],
@@ -86,13 +88,12 @@ const BINDINGS = [
   ['s-tracks', 'subassemblies.tracks.present', 'bool'],
   ['s-halftracks', 'subassemblies.halftracks.present', 'bool'],
   ['s-skids', 'subassemblies.skids.present', 'bool'],
+  ['s-legs', 'subassemblies.legs.present', 'bool'],
+  ['s-legcount', 'subassemblies.legs.count', 'num'],
   ['s-wings', 'subassemblies.wings.present', 'bool'],
   ['s-wingtype', 'subassemblies.wings.type', 'text'],
   ['s-wingfrac', 'subassemblies.wings.volumeFrac', 'num'],
   ['s-rotors', 'subassemblies.rotors.present', 'bool'],
-  ['s-turret', 'subassemblies.turret.present', 'bool'],
-  ['s-turretvol', 'subassemblies.turret.volumeCf', 'num'],
-  ['s-turretrot', 'subassemblies.turret.rotation', 'text'],
   ['s-masts', 'subassemblies.masts.present', 'bool'],
   ['s-mastheight', 'subassemblies.masts.heightFt', 'num'],
   ['s-gasbag', 'subassemblies.gasbag.present', 'bool'],
@@ -103,6 +104,8 @@ const BINDINGS = [
   ['f-emptycf', 'emptySpaceCf', 'num'],
   ['f-fueltype', 'fuel.type', 'text'],
   ['f-fuelgal', 'fuel.gallons', 'num'],
+  ['f-hpcount', 'hardpoints.count', 'num'],
+  ['f-hpload', 'hardpoints.loadLbs', 'num'],
   ['o-suspension', 'options.improvedSuspension', 'bool'],
   ['o-brakes', 'options.improvedBrakes', 'bool'],
   ['o-aws', 'options.allWheelSteering', 'bool'],
@@ -114,26 +117,145 @@ const BINDINGS = [
 function bindAll() {
   for (const [id, path, kind] of BINDINGS) {
     const el = $(id);
+    if (!el) continue;
     const event = kind === 'bool' || el.tagName === 'SELECT' ? 'change' : 'input';
     el.addEventListener(event, () => {
       const value = kind === 'bool' ? el.checked : kind === 'num' ? Number(el.value) || 0 : el.value;
       setPath(design, path, value);
+      if (id === 'f-armormode') syncArmorMode();
       render();
     });
   }
 }
 
+function syncArmorMode() {
+  const facing = design.armor.mode === 'facing';
+  $('armor-overall').style.display = facing ? 'none' : '';
+  $('armor-facing').style.display = facing ? '' : 'none';
+}
+
 function syncForm() {
+  if (!design.armor.faces) design.armor.faces = defaultVe2Design().armor.faces;
   for (const [id, path, kind] of BINDINGS) {
     const el = $(id);
+    if (!el) continue;
     const value = getPath(design, path);
     if (kind === 'bool') el.checked = !!value;
-    else el.value = value;
+    else el.value = value ?? '';
   }
+  syncArmorMode();
+  renderTurrets();
+  renderSupers();
   renderComponents();
+  syncLocationOptions();
+}
+
+// --- Turrets & superstructures ---------------------------------------------
+function renderTurrets() {
+  const wrap = $('turret-list');
+  wrap.innerHTML = '';
+  (design.subassemblies.turrets || []).forEach((t, i) => {
+    const row = document.createElement('div');
+    row.className = 'weapon-row';
+    row.innerHTML = `
+      <span class="weapon-name">Turret ${i + 1}</span>
+      <span class="weapon-detail sub-edit">
+        <label>cf <input type="number" data-k="volumeCf" min="0.5" step="0.5" value="${t.volumeCf}"></label>
+        <label>rotation <select data-k="rotation">
+          ${['full', 'limited', 'popFull', 'popLimited'].map((rt) => `<option value="${rt}" ${t.rotation === rt ? 'selected' : ''}>${rt}</option>`).join('')}
+        </select></label>
+        <label>slope° <input type="number" data-k="slopeDegrees" min="0" max="240" step="30" value="${t.slopeDegrees || 0}"></label>
+        <label>DR <input type="number" data-k="dr" min="0" step="1" value="${t.dr || 0}" title="Used in facing-armor mode"></label>
+      </span>`;
+    row.querySelectorAll('[data-k]').forEach((el) => {
+      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+        t[el.dataset.k] = el.tagName === 'SELECT' ? el.value : Number(el.value) || 0;
+        render();
+      });
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn small danger';
+    del.textContent = '✕';
+    del.addEventListener('click', () => {
+      design.subassemblies.turrets.splice(i, 1);
+      design.components = design.components.filter((c) => c.location !== `turret${i}`)
+        .map((c) => remapLocation(c, 'turret', i));
+      renderTurrets(); syncLocationOptions(); renderComponents(); render();
+    });
+    row.appendChild(del);
+    wrap.appendChild(row);
+  });
+  if (!design.subassemblies.turrets?.length) wrap.innerHTML = '<p class="muted">No turrets.</p>';
+}
+
+function renderSupers() {
+  const wrap = $('super-list');
+  wrap.innerHTML = '';
+  (design.subassemblies.superstructures || []).forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'weapon-row';
+    row.innerHTML = `
+      <span class="weapon-name">Superstructure ${i + 1}</span>
+      <span class="weapon-detail sub-edit">
+        <label>cf <input type="number" data-k="volumeCf" min="0.5" step="0.5" value="${s.volumeCf}"></label>
+        <label>slope° <input type="number" data-k="slopeDegrees" min="0" max="240" step="30" value="${s.slopeDegrees || 0}"></label>
+        <label>DR <input type="number" data-k="dr" min="0" step="1" value="${s.dr || 0}" title="Used in facing-armor mode"></label>
+      </span>`;
+    row.querySelectorAll('[data-k]').forEach((el) => {
+      el.addEventListener('input', () => { s[el.dataset.k] = Number(el.value) || 0; render(); });
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn small danger';
+    del.textContent = '✕';
+    del.addEventListener('click', () => {
+      design.subassemblies.superstructures.splice(i, 1);
+      design.components = design.components.filter((c) => c.location !== `super${i}`)
+        .map((c) => remapLocation(c, 'super', i));
+      renderSupers(); syncLocationOptions(); renderComponents(); render();
+    });
+    row.appendChild(del);
+    wrap.appendChild(row);
+  });
+  if (!design.subassemblies.superstructures?.length) wrap.innerHTML = '<p class="muted">No superstructures.</p>';
+}
+
+// After deleting subassembly i, shift higher-numbered locations down.
+function remapLocation(c, prefix, deleted) {
+  const m = String(c.location || '').match(new RegExp(`^${prefix}(\\d+)$`));
+  if (m && Number(m[1]) > deleted) return { ...c, location: `${prefix}${Number(m[1]) - 1}` };
+  return c;
+}
+
+function initSubassemblyAdders() {
+  $('turret-add').addEventListener('click', () => {
+    design.subassemblies.turrets.push({ volumeCf: 8, rotation: 'full', slopeDegrees: 0, dr: 0 });
+    renderTurrets(); syncLocationOptions(); render();
+  });
+  $('super-add').addEventListener('click', () => {
+    design.subassemblies.superstructures.push({ volumeCf: 50, slopeDegrees: 0, dr: 0 });
+    renderSupers(); syncLocationOptions(); render();
+  });
+}
+
+function syncLocationOptions() {
+  const entries = [['body', 'Body'], ['wings', 'Wings']];
+  (design.subassemblies.turrets || []).forEach((_, i) => entries.push([`turret${i}`, `Turret ${i + 1}`]));
+  (design.subassemblies.superstructures || []).forEach((_, i) => entries.push([`super${i}`, `Superstructure ${i + 1}`]));
+  const current = $('c-location').value || 'body';
+  fillSelect($('c-location'), entries, entries.some(([v]) => v === current) ? current : 'body');
 }
 
 // --- Components ------------------------------------------------------------
+function locationLabel(loc) {
+  if (!loc || loc === 'body') return '';
+  if (loc === 'wings') return 'in wings';
+  const m = loc.match(/^(turret|super)(\d+)$/);
+  if (m) return `in ${m[1] === 'turret' ? 'turret' : 'superstructure'} ${Number(m[2]) + 1}`;
+  return `in ${loc}`;
+}
+
 function renderComponents() {
   const wrap = $('component-list');
   wrap.innerHTML = '';
@@ -148,7 +270,7 @@ function renderComponents() {
       c.staticLift ? `${fmt(c.staticLift)} lb lift` : '',
       c.contragravLift ? `${fmt(c.contragravLift)} lb contragrav` : '',
       c.airBreathing ? 'air-breathing' : '',
-      c.location !== 'body' ? `in ${c.location}` : '',
+      locationLabel(c.location),
     ].filter(Boolean).join(' · ');
     const row = document.createElement('div');
     row.className = 'weapon-row';
@@ -183,7 +305,7 @@ function componentFormValue() {
 }
 
 function clearComponentForm() {
-  for (const id of ['c-name']) $(id).value = '';
+  $('c-name').value = '';
   for (const id of ['c-weight', 'c-cost', 'c-volume', 'c-kwin', 'c-kwout', 'c-groundkw', 'c-aqua', 'c-air', 'c-lift', 'c-contragrav']) $(id).value = 0;
   $('c-airbreathing').checked = false;
 }
@@ -231,6 +353,7 @@ function row(label, value) {
 
 function render() {
   const r = computeVe2(design);
+  lastResult = r;
 
   $('sheet-name').textContent = design.name;
   $('sheet-sub').textContent = `TL${design.tl} · ${FRAME_STRENGTHS[design.structure.frame].name} frame, ${MATERIALS[design.structure.material].name.toLowerCase()} materials`;
@@ -240,22 +363,40 @@ function render() {
   html += '<h3>Size &amp; Structure</h3>';
   html += row('Body volume', `${fmt(r.volumes.body, 2)} cf`);
   for (const [k, v] of Object.entries(r.volumes)) {
-    if (k !== 'body' && v > 0) html += row(`${cap(k)} volume`, `${fmt(v, 2)} cf`);
+    if (k !== 'body' && v > 0) html += row(`${prettyKey(k)} volume`, `${fmt(v, 2)} cf`);
   }
   html += row('Total volume / Size Modifier', `${fmt(r.totalVolume, 1)} cf · SM ${r.stats.sm >= 0 ? '+' : ''}${r.stats.sm}`);
   html += row('Surface area (total / structural)', `${fmt(r.totalArea)} / ${fmt(r.structuralArea)} sf`);
   html += row('Structure', `${fmt(r.structure.weight)} lbs · $${fmt(r.structure.cost)}`);
-  html += row('Armor', r.armor.dr > 0 ? `PD ${r.armor.pd}, DR ${r.armor.dr} · ${fmt(r.armor.weight)} lbs · $${fmt(r.armor.cost)}` : 'none');
+
+  html += '<h3>Armor</h3>';
+  if (r.armor.mode === 'overall') {
+    html += row('Coverage', r.armor.dr > 0 ? `PD ${r.armor.pd}, DR ${r.armor.dr} overall` : 'none');
+  } else if (r.armor.faces) {
+    for (const f of BODY_FACE_KEYS) {
+      const face = r.armor.faces[f];
+      if (!face || face.dr === 0) continue;
+      html += row(prettyKey(f), `PD ${face.pd}, DR ${face.effDR}${face.slope ? ` (${face.dr} @ ${face.slope}°)` : ''}`);
+    }
+    (design.subassemblies.turrets || []).forEach((t, i) => {
+      if (t.dr > 0) html += row(`Turret ${i + 1}`, `DR ${t.dr}`);
+    });
+    (design.subassemblies.superstructures || []).forEach((s, i) => {
+      if (s.dr > 0) html += row(`Superstructure ${i + 1}`, `DR ${s.dr}`);
+    });
+    if (design.armor.otherDr > 0) html += row('Other subassemblies', `DR ${design.armor.otherDr}`);
+  }
+  if (r.armor.weight > 0) html += row('Armor weight & cost', `${fmt(r.armor.weight)} lbs · $${fmt(r.armor.cost)}`);
 
   html += '<h3>Hit Points</h3>';
-  const hpBits = Object.entries(r.hp).map(([k, v]) => `${cap(k.replace('per', ''))} ${v}`).join(' · ');
-  html += `<p>${hpBits}</p>`;
+  html += `<p>${Object.entries(r.hp).map(([k, v]) => `${prettyKey(k.replace('per', ''))} ${v}`).join(' · ')}</p>`;
 
   html += '<h3>Weights</h3>';
   html += row('Empty weight', `${fmt(r.weights.empty)} lbs`);
   html += row('Payload (people + cargo)', `${fmt(r.weights.payload)} lbs`);
   html += row('Fuel', `${fmt(r.weights.fuel)} lbs`);
   html += row('Loaded weight', `${fmt(r.weights.loaded)} lbs (${fmt(r.weights.loadedTons, 2)} tons)`);
+  if (r.weights.loadedWithStores) html += row('With hardpoints loaded', `${fmt(r.weights.loadedWithStores)} lbs`);
   if (r.flotation > 0) html += row('Flotation', `${fmt(r.flotation)} lbs ${r.floats ? '— floats' : '— SINKS'}`);
   if (r.weights.submerged > 0) html += row('Submerged weight', `${fmt(r.weights.submerged)} lbs`);
   if (r.power.needed > 0 || r.power.available > 0) {
@@ -269,7 +410,7 @@ function render() {
   if (r.perf.ground) {
     const g = r.perf.ground;
     html += '<h3>Ground Performance</h3>';
-    html += row('Top speed', `${g.topSpeed} mph`);
+    html += row('Top speed', `${g.topSpeed} mph${g.topSpeedWithStores ? ` (${g.topSpeedWithStores} with stores)` : ''}`);
     html += row('gAccel / gDecel', `${g.gAccel} / ${g.gDecel} mph/s`);
     html += row('gMR / gSR', `${g.gMR} / ${g.gSR}`);
     html += row('Ground pressure', `${fmt(g.groundPressure)} (${g.gpLabel})`);
@@ -298,6 +439,7 @@ function render() {
     html += row('aAccel / aDecel', `${a.aAccel} / ${a.aDecel} mph/s`);
     html += row('aMR / aSR', `${a.aMR} / ${a.aSR}`);
     if (a.takeoffRun) html += row('Takeoff run', `${fmt(a.takeoffRun)} yds`);
+    if (a.withStores) html += row('With stores', `stall ${a.withStores.stallSpeed}, top ${a.withStores.topSpeed} mph, aAccel ${a.withStores.aAccel}`);
     if (!a.canFly) html += row('Flight', '⚠️ cannot take off unaided');
   }
 
@@ -310,7 +452,9 @@ function render() {
   $('problems-card').style.display = (r.errors.length || r.warnings.length) ? '' : 'none';
 }
 
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+function prettyKey(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1).replace(/(\d+)$/, ' $1').replace('super ', 'superstructure ');
+}
 
 // --- Toolbar ---------------------------------------------------------------
 const KEY = 'gvb.ve2designs.v1';
@@ -322,15 +466,22 @@ function refreshSaved() {
 }
 
 function replaceDesign(next) {
-  design = { ...defaultVe2Design(), ...structuredClone(next) };
-  design.features = { ...defaultVe2Design().features, ...(next.features || {}) };
-  design.structure = { ...defaultVe2Design().structure, ...(next.structure || {}) };
-  design.armor = { ...defaultVe2Design().armor, ...(next.armor || {}) };
-  design.options = { ...defaultVe2Design().options, ...(next.options || {}) };
-  design.fuel = { ...defaultVe2Design().fuel, ...(next.fuel || {}) };
-  const subDefaults = defaultVe2Design().subassemblies;
+  next = migrateVe2Design(next);
+  const base = defaultVe2Design();
+  design = { ...base, ...structuredClone(next) };
+  design.features = { ...base.features, ...(next.features || {}) };
+  design.structure = { ...base.structure, ...(next.structure || {}) };
+  design.armor = { ...base.armor, ...(next.armor || {}) };
+  if (!design.armor.faces) design.armor.faces = base.armor.faces;
+  design.options = { ...base.options, ...(next.options || {}) };
+  design.fuel = { ...base.fuel, ...(next.fuel || {}) };
+  design.hardpoints = { ...base.hardpoints, ...(next.hardpoints || {}) };
   design.subassemblies = Object.fromEntries(
-    Object.entries(subDefaults).map(([k, v]) => [k, { ...v, ...((next.subassemblies || {})[k] || {}) }])
+    Object.entries(base.subassemblies).map(([k, v]) => {
+      const incoming = (next.subassemblies || {})[k];
+      if (Array.isArray(v)) return [k, structuredClone(incoming || [])];
+      return [k, { ...v, ...(incoming || {}) }];
+    })
   );
   design.components = structuredClone(next.components || []);
   syncForm();
@@ -338,6 +489,12 @@ function replaceDesign(next) {
 }
 
 function initToolbar() {
+  $('preset-select').addEventListener('change', (e) => {
+    if (e.target.value === '') return;
+    replaceDesign(VE2_PRESETS[Number(e.target.value)]);
+    e.target.value = '';
+    flash(`Loaded “${design.name}”.`);
+  });
   $('btn-new').addEventListener('click', () => {
     if (confirm('Start a new design?')) replaceDesign(defaultVe2Design());
   });
@@ -375,6 +532,14 @@ function initToolbar() {
       e.target.value = '';
     });
   });
+  $('btn-export-md').addEventListener('click', () => {
+    $('md-output').value = toVe2Markdown(design, lastResult || computeVe2(design));
+    $('md-modal').showModal();
+  });
+  $('md-copy').addEventListener('click', () => {
+    navigator.clipboard.writeText($('md-output').value).then(() => flash('Copied to clipboard.'));
+  });
+  $('md-close').addEventListener('click', () => $('md-modal').close());
   $('btn-print').addEventListener('click', () => window.print());
 }
 
@@ -391,6 +556,7 @@ function flash(msg) {
 initStatic();
 bindAll();
 initComponentAdder();
+initSubassemblyAdders();
 initGvbLibrary({ vehicleTl: () => design.tl, addEquipment: prefillFromGvb });
 initToolbar();
 refreshSaved();

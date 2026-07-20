@@ -243,6 +243,9 @@ input:disabled { background: #eee7d8; color: var(--muted); }
 .loc-legend { columns: 2; }
 
 /* ------------------------------------------------ VE2 designer */
+.sub-edit { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.sub-edit label { flex-direction: row; align-items: center; gap: 4px; font-weight: 400; font-size: 12.5px; }
+.sub-edit input, .sub-edit select { width: 80px; padding: 3px 6px; font-size: 12.5px; }
 .inline-check { justify-content: flex-end; }
 .inline-check .inline { font-weight: 600; }
 .inline-check input { width: auto; }

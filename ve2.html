@@ -15,12 +15,14 @@
     <p>The full book design system: volumes → structure → armor → performance. <a href="index.html" style="color:#fff">↩ streamlined designer</a></p>
   </div>
   <div class="toolbar">
+    <select id="preset-select" title="Load a sample design"></select>
     <select id="saved-select" title="Load a saved design"></select>
     <button class="btn" id="btn-new">New</button>
     <button class="btn primary" id="btn-save">Save</button>
     <button class="btn" id="btn-import-json">Import</button>
     <button class="btn" id="btn-export-json">Export JSON</button>
     <button class="btn" id="btn-gvb">GVB Library</button>
+    <button class="btn" id="btn-export-md">Stat Block</button>
     <button class="btn" id="btn-print">Print</button>
     <input type="file" id="import-file" accept=".json,application/json" hidden>
   </div>
@@ -67,10 +69,37 @@
     </div>
 
     <div class="card">
-      <h2>4 · Armor (overall)</h2>
+      <h2>4 · Armor</h2>
       <div class="grid2">
         <label>Armor type <select id="f-armortype"></select></label>
+        <label>Coverage <select id="f-armormode">
+          <option value="overall">Overall (same DR everywhere)</option>
+          <option value="facing">By facing (per-face DR &amp; slope)</option>
+        </select></label>
+      </div>
+      <div id="armor-overall" class="grid2" style="margin-top:8px">
         <label>DR <input type="number" id="f-dr" min="0" step="1"></label>
+      </div>
+      <div id="armor-facing" style="display:none; margin-top:8px">
+        <div class="dr-grid" style="grid-template-columns: repeat(6, 1fr)">
+          <label>Front <input type="number" id="af-front" min="0" step="1"></label>
+          <label>Back <input type="number" id="af-back" min="0" step="1"></label>
+          <label>Left <input type="number" id="af-left" min="0" step="1"></label>
+          <label>Right <input type="number" id="af-right" min="0" step="1"></label>
+          <label>Top <input type="number" id="af-top" min="0" step="1"></label>
+          <label>Under <input type="number" id="af-under" min="0" step="1"></label>
+        </div>
+        <div class="dr-grid" style="grid-template-columns: repeat(4, 1fr); margin-top:6px">
+          <label>Front slope <select id="as-front"><option value="0">none</option><option value="30">30°</option><option value="60">60°</option></select></label>
+          <label>Back slope <select id="as-back"><option value="0">none</option><option value="30">30°</option><option value="60">60°</option></select></label>
+          <label>Left slope <select id="as-left"><option value="0">none</option><option value="30">30°</option><option value="60">60°</option></select></label>
+          <label>Right slope <select id="as-right"><option value="0">none</option><option value="30">30°</option><option value="60">60°</option></select></label>
+        </div>
+        <div class="grid2" style="margin-top:6px">
+          <label>DR on wheels/tracks/wings/etc. <input type="number" id="f-otherdr" min="0" step="1"></label>
+        </div>
+        <p class="muted">Sloped faces multiply effective DR (×1.5 at 30°, ×2 at 60°) and add
+        PD, but make the body bigger. Turret and superstructure DR is set on each one below.</p>
       </div>
     </div>
 
@@ -88,14 +117,19 @@
         <label>Wing type <select id="s-wingtype"></select></label>
         <label>Wing volume (× body vol., per wing) <input type="number" id="s-wingfrac" min="0.02" max="0.5" step="0.01"></label>
         <label class="inline-check"><span class="inline"><input type="checkbox" id="s-rotors"> Rotors</span></label>
-        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-turret"> Turret</span></label>
-        <label>Turret volume (cf) <input type="number" id="s-turretvol" min="0.5" step="0.5"></label>
-        <label>Turret rotation <select id="s-turretrot"></select></label>
+        <label class="inline-check"><span class="inline"><input type="checkbox" id="s-legs"> Legs</span></label>
+        <label>Leg count <input type="number" id="s-legcount" min="2" max="8" step="1"></label>
         <label class="inline-check"><span class="inline"><input type="checkbox" id="s-masts"> Masts</span></label>
         <label>Mast height (ft) <input type="number" id="s-mastheight" min="5" step="5"></label>
         <label class="inline-check"><span class="inline"><input type="checkbox" id="s-gasbag"> Gasbag</span></label>
         <label>Gasbag volume (cf) <input type="number" id="s-gasbagcf" min="0" step="100"></label>
       </div>
+      <h3>Turrets</h3>
+      <div id="turret-list"></div>
+      <button class="btn" id="turret-add" type="button">+ Add turret</button>
+      <h3>Superstructures</h3>
+      <div id="super-list"></div>
+      <button class="btn" id="super-add" type="button">+ Add superstructure</button>
     </div>
 
     <div class="card">
@@ -114,9 +148,7 @@
         <label>Aerial thrust (lbs) <input type="number" id="c-air" step="any" value="0"></label>
         <label>Static lift (lbs) <input type="number" id="c-lift" step="any" value="0"></label>
         <label>Contragrav lift (lbs) <input type="number" id="c-contragrav" step="any" value="0"></label>
-        <label>Location <select id="c-location">
-          <option value="body">Body</option><option value="turret">Turret</option><option value="wings">Wings</option>
-        </select></label>
+        <label>Location <select id="c-location"></select></label>
       </div>
       <div class="modal-actions" style="justify-content:flex-start">
         <label class="inline" style="font-weight:400"><input type="checkbox" id="c-airbreathing"> air-breathing (unusable submerged)</label>
@@ -135,6 +167,8 @@
         <label>Extra empty space (cf) <input type="number" id="f-emptycf" min="0" step="1"></label>
         <label>Fuel type <select id="f-fueltype"></select></label>
         <label>Fuel (gallons) <input type="number" id="f-fuelgal" min="0" step="1"></label>
+        <label>Hardpoints <input type="number" id="f-hpcount" min="0" step="1"></label>
+        <label>Max hardpoint load (lbs) <input type="number" id="f-hpload" min="0" step="50"></label>
       </div>
       <p class="muted">Remember to add crew stations, seats, engines, drivetrains and fuel
       tanks as components — this section only counts people and fuel weight.</p>
@@ -186,6 +220,15 @@
   </div>
   <div class="modal-actions">
     <button class="btn" id="gvb-close">Close</button>
+  </div>
+</dialog>
+
+<dialog id="md-modal">
+  <h2>Stat block (Markdown)</h2>
+  <textarea id="md-output" rows="18" spellcheck="false"></textarea>
+  <div class="modal-actions">
+    <button class="btn primary" id="md-copy">Copy</button>
+    <button class="btn" id="md-close">Close</button>
   </div>
 </dialog>
 

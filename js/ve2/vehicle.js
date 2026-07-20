@@ -10,10 +10,14 @@ import {
   PAYLOAD_PER_PERSON, SEALED_COST_PER_SF, SPECIAL_STRUCTURES, STREAMLINING,
   STRUCTURE_MODIFIERS, SUBASSEMBLY_VOLUME, TURRET_ROTATION_SPACE,
   WATERPROOF_COST_PER_SF, WING_AREA_MULT, armorWeightMod, ARMOR_TYPES,
+  BODY_FACES, TURRET_FACES, SLOPE_DR_MULT, SLOPE_PD_BONUS,
   locationHP, mastVolume, pdFromDR, sizeModifier, slopeVolumeMult,
   structuralHT, structureTL, surfaceArea,
 } from './tables.js';
 import * as P from './performance.js';
+
+export const BODY_FACE_KEYS = ['front', 'back', 'left', 'right', 'top', 'under'];
+const SLOPEABLE_FACES = ['front', 'back', 'left', 'right'];
 
 export function defaultVe2Design() {
   return {
@@ -27,33 +31,60 @@ export function defaultVe2Design() {
       liftingBody: false, responsive: false,
     },
     structure: { frame: 'medium', material: 'standard', special: 'none' },
-    armor: { type: 'metalStandard', dr: 5 },
-    bodySlopeDegrees: 0,
+    armor: {
+      type: 'metalStandard',
+      mode: 'overall',          // 'overall' | 'facing'
+      dr: 5,                    // overall mode
+      faces: Object.fromEntries(BODY_FACE_KEYS.map((f) => [f, { dr: 5, slope: 0 }])),
+      otherDr: 0,               // facing mode: DR on wheels/tracks/wings/etc.
+    },
     subassemblies: {
       wheels: { present: true, type: 'standard', count: 4, retractable: false },
       tracks: { present: false },
       halftracks: { present: false },
       skids: { present: false },
+      legs: { present: false, count: 2 },
       wings: { present: false, type: 'standard', volumeFrac: 0.1 },
       rotors: { present: false, tl: 7 },
-      turret: { present: false, volumeCf: 8, rotation: 'full', slopeDegrees: 0 },
+      turrets: [],              // { volumeCf, rotation, slopeDegrees, dr }
+      superstructures: [],      // { volumeCf, slopeDegrees, dr }
       masts: { present: false, heightFt: 30 },
       gasbag: { present: false, cf: 0 },
     },
     // Each component: { name, weight, cost, volume, kwIn, kwOut, groundKw,
     //   aquaticThrust, airThrust, staticLift, contragravLift, airBreathing,
-    //   location: 'body' | 'turret' | 'wings', note }
+    //   location: 'body' | 'wings' | 'turret0' | 'super0' | ..., note }
     components: [],
     crew: 1,
     passengers: 0,
     cargoCf: 0,
     emptySpaceCf: 0,
     fuel: { type: 'gasoline', gallons: 0 },
+    hardpoints: { count: 0, loadLbs: 0 },
     options: {
       improvedSuspension: false, improvedBrakes: false, allWheelSteering: false,
       allWheelDrive: false, smartwheels: false, rollStabilizers: false,
     },
   };
+}
+
+// Migrate older saved designs (single `turret` object, `bodySlopeDegrees`).
+export function migrateVe2Design(d) {
+  const next = structuredClone(d);
+  const sub = next.subassemblies || {};
+  if (sub.turret && !sub.turrets) {
+    sub.turrets = sub.turret.present
+      ? [{ volumeCf: sub.turret.volumeCf, rotation: sub.turret.rotation, slopeDegrees: sub.turret.slopeDegrees || 0, dr: next.armor?.dr ?? 0 }]
+      : [];
+    delete sub.turret;
+    next.components = (next.components || []).map((c) => c.location === 'turret' ? { ...c, location: 'turret0' } : c);
+  }
+  if (next.bodySlopeDegrees && next.armor && !next.armor.faces) {
+    // old designs stored a single body slope; spread it onto the front face
+    next.armor.faces = defaultVe2Design().armor.faces;
+    next.armor.faces.front.slope = Math.min(next.bodySlopeDegrees, 60);
+  }
+  return next;
 }
 
 const n = (x) => Number(x) || 0;
@@ -68,6 +99,8 @@ export function computeVe2(design) {
   const sub = d.subassemblies;
   const feats = d.features;
   const opts = d.options;
+  const turrets = sub.turrets || [];
+  const supers = sub.superstructures || [];
 
   // --- Component totals ----------------------------------------------------
   const comps = d.components || [];
@@ -90,21 +123,31 @@ export function computeVe2(design) {
   // --- Volumes -------------------------------------------------------------
   const volInLocation = (loc) => comps.reduce((a, c) => a + ((c.location || 'body') === loc ? n(c.volume) : 0), 0);
 
-  // Turret
-  let turretVolume = 0;
+  // Turrets (attached to the body; rotation space occupies the body).
   let turretRotSpace = 0;
-  if (sub.turret.present) {
-    const inTurret = volInLocation('turret');
-    turretVolume = Math.max(n(sub.turret.volumeCf), inTurret) * slopeVolumeMult(n(sub.turret.slopeDegrees));
-    if (inTurret > n(sub.turret.volumeCf)) {
-      warnings.push(`Turret volume raised to ${r2(inTurret)} cf to fit its components.`);
-    }
-    turretRotSpace = turretVolume * (TURRET_ROTATION_SPACE[sub.turret.rotation] ?? 0.2);
-  }
+  const turretVolumes = turrets.map((t, i) => {
+    const inTurret = volInLocation(`turret${i}`);
+    const vol = Math.max(n(t.volumeCf), inTurret) * slopeVolumeMult(n(t.slopeDegrees));
+    if (inTurret > n(t.volumeCf)) warnings.push(`Turret ${i + 1} volume raised to ${r2(inTurret)} cf to fit its components.`);
+    turretRotSpace += vol * (TURRET_ROTATION_SPACE[t.rotation] ?? 0.2);
+    return vol;
+  });
 
-  // Body
+  // Superstructures (no rotation space).
+  const superVolumes = supers.map((s, i) => {
+    const inSuper = volInLocation(`super${i}`);
+    const vol = Math.max(n(s.volumeCf), inSuper) * slopeVolumeMult(n(s.slopeDegrees));
+    if (inSuper > n(s.volumeCf)) warnings.push(`Superstructure ${i + 1} volume raised to ${r2(inSuper)} cf to fit its components.`);
+    return vol;
+  });
+
+  // Body slope comes from the sloped armor faces (facing mode only).
+  const bodySlopeDegrees = d.armor.mode === 'facing'
+    ? SLOPEABLE_FACES.reduce((a, f) => a + n(d.armor.faces?.[f]?.slope), 0)
+    : 0;
+
   const bodyComponents = volInLocation('body') + n(d.cargoCf) + n(d.emptySpaceCf) + turretRotSpace;
-  let bodyVolume = bodyComponents * slopeVolumeMult(n(d.bodySlopeDegrees));
+  let bodyVolume = bodyComponents * slopeVolumeMult(bodySlopeDegrees);
   bodyVolume *= STREAMLINING[d.streamlining]?.bodyVolume ?? 1;
   if (feats.submersibleHull) bodyVolume *= BODY_VOLUME_MULTS.submersibleHull;
   bodyVolume *= HYDRO_LINES[feats.hydroLines]?.bodyVolume ?? 1;
@@ -112,9 +155,15 @@ export function computeVe2(design) {
   if (sub.wheels.present && sub.wheels.retractable) bodyVolume *= BODY_VOLUME_MULTS.retractIntoBody;
 
   if (bodyVolume <= 0) errors.push('The body has no volume — add components, cargo space or empty space.');
+  const attachedVolume = turretVolumes.reduce((a, v) => a + v, 0) + superVolumes.reduce((a, v) => a + v, 0);
+  if (attachedVolume > bodyVolume && bodyVolume > 0) {
+    warnings.push('Combined turret/superstructure volume exceeds the body volume — add empty space to the body.');
+  }
 
   // Other subassemblies
-  const volumes = { body: bodyVolume, turret: turretVolume };
+  const volumes = { body: bodyVolume };
+  turretVolumes.forEach((v, i) => { volumes[`turret${i}`] = v; });
+  superVolumes.forEach((v, i) => { volumes[`super${i}`] = v; });
   if (sub.wheels.present) {
     const frac = sub.wheels.retractable || sub.wheels.type === 'small' ? SUBASSEMBLY_VOLUME.wheelsSmall
       : ['heavy', 'offroad', 'railway'].includes(sub.wheels.type) ? SUBASSEMBLY_VOLUME.wheelsHeavy
@@ -124,6 +173,7 @@ export function computeVe2(design) {
   if (sub.tracks.present) volumes.tracks = SUBASSEMBLY_VOLUME.tracks * bodyVolume;
   if (sub.halftracks.present) volumes.halftracks = SUBASSEMBLY_VOLUME.halftrack * bodyVolume;
   if (sub.skids.present) volumes.skids = SUBASSEMBLY_VOLUME.skids * bodyVolume;
+  if (sub.legs?.present) volumes.legs = 0.4 * bodyVolume; // combined minimum for all legs
   if (sub.wings.present) {
     const inWings = volInLocation('wings');
     volumes.wings = sub.wings.type === 'stub'
@@ -141,10 +191,13 @@ export function computeVe2(design) {
   // --- Areas ---------------------------------------------------------------
   const areas = {};
   for (const [key, vol] of Object.entries(volumes)) {
-    let area = surfaceArea(vol);
-    if (key === 'wings' && sub.wings.type !== 'stub') {
-      area *= WING_AREA_MULT[sub.wings.type] ?? 1.5;
+    if (key === 'legs') {
+      const count = Math.max(Math.floor(sub.legs.count) || 2, 2);
+      areas.legs = surfaceArea(vol / count) * count; // per-leg areas, summed
+      continue;
     }
+    let area = surfaceArea(vol);
+    if (key === 'wings' && sub.wings.type !== 'stub') area *= WING_AREA_MULT[sub.wings.type] ?? 1.5;
     if (key === 'rotors') area *= WING_AREA_MULT.rotor;
     areas[key] = area;
   }
@@ -171,12 +224,10 @@ export function computeVe2(design) {
   structCost *= streamlining.structCost;
   if (feats.liftingBody) structCost *= STRUCTURE_MODIFIERS.liftingBody.cost;
 
-  // Masts & gasbags are built separately (not structural area).
   let mastWeight = 0;
   let mastCost = 0;
   if (sub.masts.present) {
-    const w = lookupTL(MAST_OPEN_MOUNT.weightBySf, tl);
-    mastWeight = areas.masts * w;
+    mastWeight = areas.masts * lookupTL(MAST_OPEN_MOUNT.weightBySf, tl);
     mastCost = areas.masts * MAST_OPEN_MOUNT.costPerSf;
   }
   let gasbagWeight = 0;
@@ -186,25 +237,84 @@ export function computeVe2(design) {
     gasbagCost = areas.gasbag * lookupTL(GASBAG.costBySf, tl);
   }
 
-  // --- Armor (overall) -----------------------------------------------------
-  const dr = Math.max(Math.floor(n(d.armor.dr)), 0);
+  // --- Armor ---------------------------------------------------------------
+  const armorType = ARMOR_TYPES[d.armor.type];
+  const armorMod = armorWeightMod(d.armor.type, tl);
+  const metallic = ['metal', 'composite', 'laminate'].includes(armorType?.group);
   let armorWeight = 0;
   let armorCost = 0;
-  let pd = 0;
-  if (dr > 0) {
-    const mod = armorWeightMod(d.armor.type, tl);
-    const type = ARMOR_TYPES[d.armor.type];
-    if (mod === null) {
-      errors.push(`${type?.name || d.armor.type} armor is not available at TL ${tl}.`);
-    } else {
-      armorWeight = structuralArea * mod * dr;
-      armorCost = armorWeight * type.costPerLb;
-      pd = pdFromDR(dr);
-      if (type.group === 'wood') pd = Math.min(pd, 3);
-      if (type.group === 'nonrigid') pd = Math.min(pd, 2);
+  const armorFaces = {};   // facing mode: effective DR & PD per body face
+  let bodyMinDR = 0;
+  let overallPD = 0;
+
+  const anyArmorWanted = d.armor.mode === 'overall'
+    ? n(d.armor.dr) > 0
+    : BODY_FACE_KEYS.some((f) => n(d.armor.faces?.[f]?.dr) > 0);
+
+  if (anyArmorWanted && armorMod === null) {
+    errors.push(`${armorType?.name || d.armor.type} armor is not available at TL ${tl}.`);
+  } else if (d.armor.mode === 'overall') {
+    const dr = Math.max(Math.floor(n(d.armor.dr)), 0);
+    bodyMinDR = dr;
+    if (dr > 0) {
+      armorWeight = structuralArea * armorMod * dr; // covers everything
+      armorCost = armorWeight * armorType.costPerLb;
+      overallPD = clampPD(pdFromDR(dr), armorType);
     }
-  } else if (feats.flotationHull || feats.submersibleHull || d.streamlining !== 'none' || sub.rotors.present) {
+  } else {
+    // Facing armor on the body: each face is 1/6 of the body area.
+    const faceArea = areas.body / BODY_FACES;
+    bodyMinDR = Infinity;
+    for (const face of BODY_FACE_KEYS) {
+      const f = d.armor.faces?.[face] || { dr: 0, slope: 0 };
+      const dr = Math.max(Math.floor(n(f.dr)), 0);
+      const slope = SLOPEABLE_FACES.includes(face) ? (n(f.slope) === 60 ? 60 : n(f.slope) === 30 ? 30 : 0) : 0;
+      const w = faceArea * armorMod * dr;
+      armorWeight += w;
+      armorCost += w * (armorType?.costPerLb ?? 0);
+      const effDR = Math.round(dr * (SLOPE_DR_MULT[slope] ?? 1));
+      let pd = clampPD(pdFromDR(dr), armorType);
+      if (slope && metallic && dr > 0) pd = Math.min(pd + SLOPE_PD_BONUS[slope], 6);
+      armorFaces[face] = { dr, effDR, slope, pd };
+      bodyMinDR = Math.min(bodyMinDR, dr);
+    }
+    if (!isFinite(bodyMinDR)) bodyMinDR = 0;
+    // Turrets & superstructures: own overall DR over their whole area.
+    turrets.forEach((t, i) => {
+      const dr = Math.max(Math.floor(n(t.dr)), 0);
+      if (dr > 0) {
+        const w = (areas[`turret${i}`] || 0) * armorMod * dr;
+        armorWeight += w;
+        armorCost += w * armorType.costPerLb;
+      }
+    });
+    supers.forEach((s, i) => {
+      const dr = Math.max(Math.floor(n(s.dr)), 0);
+      if (dr > 0) {
+        const w = (areas[`super${i}`] || 0) * armorMod * dr;
+        armorWeight += w;
+        armorCost += w * armorType.costPerLb;
+      }
+    });
+    // Optional armor over the remaining subassemblies (wheels, wings, ...).
+    const otherDr = Math.max(Math.floor(n(d.armor.otherDr)), 0);
+    if (otherDr > 0) {
+      const otherArea = structuralArea - areas.body -
+        turrets.reduce((a, _, i) => a + (areas[`turret${i}`] || 0), 0) -
+        supers.reduce((a, _, i) => a + (areas[`super${i}`] || 0), 0);
+      const w = Math.max(otherArea, 0) * armorMod * otherDr;
+      armorWeight += w;
+      armorCost += w * armorType.costPerLb;
+    }
+    if (sub.rotors.present && otherDr > 0 && otherDr < 5) warnings.push('Rotors must have at least DR 5.');
+  }
+
+  if (!anyArmorWanted && (feats.flotationHull || feats.submersibleHull || d.streamlining !== 'none' || sub.rotors.present)) {
     warnings.push('Vehicles with a flotation/submersible hull, streamlining or rotors must have at least some armor.');
+  }
+  if (d.armor.mode === 'overall' && bodySlopeDegrees === 0 &&
+    BODY_FACE_KEYS.some((f) => n(d.armor.faces?.[f]?.slope) > 0)) {
+    warnings.push('Sloped faces require facing armor mode.');
   }
 
   // --- Sealing -------------------------------------------------------------
@@ -213,7 +323,7 @@ export function computeVe2(design) {
     // Submersible includes sealed & waterproof at no extra cost.
   } else if (feats.sealed) {
     sealCost = structuralArea * lookupTL(SEALED_COST_PER_SF, Math.max(tl, 5));
-    if (dr < 1) warnings.push('A sealed vehicle requires DR 1+ over the entire body.');
+    if (bodyMinDR < 1) warnings.push('A sealed vehicle requires DR 1+ over the entire body.');
   } else if (feats.waterproofed || feats.flotationHull) {
     sealCost = structuralArea * WATERPROOF_COST_PER_SF;
   }
@@ -221,11 +331,13 @@ export function computeVe2(design) {
   // --- Hit points ----------------------------------------------------------
   const frameKey = d.structure.frame;
   const hp = { body: locationHP(areas.body, HP_FACTORS.body, frameKey) };
-  if (sub.turret.present) hp.turret = locationHP(areas.turret, HP_FACTORS.turret, frameKey);
+  turrets.forEach((_, i) => { hp[`turret${i + 1}`] = locationHP(areas[`turret${i}`], HP_FACTORS.turret, frameKey); });
+  supers.forEach((_, i) => { hp[`superstructure${i + 1}`] = locationHP(areas[`super${i}`], HP_FACTORS.superstructure, frameKey); });
   if (sub.wheels.present) hp.perWheel = locationHP(areas.wheels, HP_FACTORS.wheel, frameKey, Math.max(sub.wheels.count, 1));
   if (sub.tracks.present) hp.perTrack = locationHP(areas.tracks, HP_FACTORS.track, frameKey, 2);
   if (sub.halftracks.present) hp.perTrack = locationHP(areas.halftracks, HP_FACTORS.track, frameKey, 2);
   if (sub.skids.present) hp.perSkid = locationHP(areas.skids, HP_FACTORS.skid, frameKey, 2);
+  if (sub.legs?.present) hp.perLeg = locationHP(areas.legs / Math.max(sub.legs.count, 2), HP_FACTORS.leg, frameKey);
   if (sub.wings.present) hp.perWing = locationHP(areas.wings / 2, HP_FACTORS.wing, frameKey);
   if (sub.rotors.present) hp.rotor = locationHP(areas.rotors, HP_FACTORS.rotor, frameKey);
   if (sub.masts.present) hp.mast = Math.max(Math.round(areas.masts * HP_FACTORS.mast), 1);
@@ -239,16 +351,21 @@ export function computeVe2(design) {
   const fuelWeight = n(d.fuel.gallons) * fuelType.lbsPerGal;
   const loadedWeight = emptyWeight + payload + fuelWeight;
   const loadedTons = loadedWeight / 2000;
+  const hardpointLoad = Math.max(n(d.hardpoints?.loadLbs), 0);
+  const hardpointCount = Math.max(Math.floor(n(d.hardpoints?.count)), 0);
+  const loadedWithStores = loadedWeight + hardpointLoad;
 
   // --- Statistics ----------------------------------------------------------
   const sm = sizeModifier(totalVolume);
   const price = structCost + armorCost + compCost + mastCost + gasbagCost + sealCost;
-  const ht = structuralHT(hp.body, loadedWeight, tl);
+  // With hardpoints, HT always uses the weight with stores loaded.
+  const ht = structuralHT(hp.body, hardpointLoad > 0 ? loadedWithStores : loadedWeight, tl);
 
-  // Flotation
   const lines = HYDRO_LINES[feats.hydroLines] || HYDRO_LINES.none;
   const flotationPerCf = feats.submersibleHull ? FLOTATION_SUBMERSIBLE : lines.flotation;
-  const flotationVolume = feats.submersibleHull ? bodyVolume + turretVolume : bodyVolume;
+  const flotationVolume = feats.submersibleHull
+    ? bodyVolume + turretVolumes.reduce((a, v) => a + v, 0) + superVolumes.reduce((a, v) => a + v, 0)
+    : bodyVolume;
   const flotation = (feats.flotationHull || feats.submersibleHull) ? flotationPerCf * flotationVolume : 0;
   const floats = flotation > 0 && loadedWeight <= flotation;
   if ((feats.flotationHull || feats.submersibleHull) && !floats && flotation > 0) {
@@ -269,16 +386,23 @@ export function computeVe2(design) {
   if (sub.wheels.present) groundSystem = 'wheels';
   else if (sub.tracks.present) groundSystem = 'tracks';
   else if (sub.halftracks.present) groundSystem = 'halftracks';
+  else if (sub.legs?.present) groundSystem = `legs${Math.min(Math.max(sub.legs.count, 2), 4) === 3 ? 3 : sub.legs.count >= 4 ? 4 : 2}`;
   else if (sub.skids.present) groundSystem = 'skids';
-  if (groundSystem) {
+
+  const computeGround = (tons) => {
     const speed = P.groundSpeed({
-      system: groundSystem, tl,
+      system: groundSystem.startsWith('legs') ? groundSystem : groundSystem, tl,
       motivePowerKw: groundKw,
       auxThrustLbs: airThrust,
-      loadedTons, streamlining: d.streamlining,
+      loadedTons: tons, streamlining: d.streamlining,
       opts: { improvedSuspension: opts.improvedSuspension, railway: sub.wheels.type === 'railway' },
     });
-    const acc = P.gAccel({ topSpeed: speed.mph, sf: speed.sf, system: groundSystem });
+    const acc = P.gAccel({ topSpeed: speed.mph, sf: speed.sf, system: groundSystem, legs: sub.legs?.count || 0 });
+    return { speed, acc };
+  };
+
+  if (groundSystem) {
+    const { speed, acc } = computeGround(loadedTons);
     const dec = P.gDecel({ system: groundSystem, improvedBrakes: opts.improvedBrakes, smartwheels: opts.smartwheels });
     const mrsr = P.gMRgSR({
       system: groundSystem, wheelCount: sub.wheels.count, bodyVolumeCf: bodyVolume, tl,
@@ -292,12 +416,13 @@ export function computeVe2(design) {
         unfoldedWingsOrRotors: sub.wings.present || sub.rotors.present,
       },
     });
-    const subareaKey = groundSystem === 'wheels' ? 'wheels' : groundSystem;
+    const subareaKey = groundSystem.startsWith('legs') ? 'legs' : groundSystem;
     const area = P.contactArea({
       system: groundSystem, subassemblyArea: areas[subareaKey] || 0, tl, wheelType: sub.wheels.type,
     });
-    const category = groundSystem === 'tracks' ? 2
-      : (groundSystem === 'halftracks' || (groundSystem === 'wheels' && opts.allWheelDrive)) ? 3 : 4;
+    const category = groundSystem.startsWith('legs') ? 1
+      : groundSystem === 'tracks' ? 2
+        : (groundSystem === 'halftracks' || (groundSystem === 'wheels' && opts.allWheelDrive)) ? 3 : 4;
     const gp = P.groundPressure({ loadedLbs: loadedWeight, contragravLift, area, category });
     perf.ground = {
       system: groundSystem, topSpeed: speed.mph, sf: speed.sf,
@@ -305,6 +430,9 @@ export function computeVe2(design) {
       groundPressure: Math.round(gp.gp), gpLabel: gp.label,
       offRoad: gp.offRoadFraction,
     };
+    if (hardpointLoad > 0) {
+      perf.ground.topSpeedWithStores = computeGround(loadedWithStores / 2000).speed.mph;
+    }
     if (groundKw <= 0 && airThrust <= 0) {
       warnings.push('Ground motive system present but no drivetrain motive power — top speed is 0.');
     }
@@ -343,7 +471,7 @@ export function computeVe2(design) {
       drag: drag.value, topSpeed: speed.mph,
       uAccel: P.uAccel({ thrustLbs: aquaticThrustSubmerged, submergedLbs: submergedWeight }).value,
       draft: P.submergedDraft({ submergedLbs: submergedWeight }),
-      crushDepth: P.crushDepth({ lowestPressurizedDR: dr, frame: d.structure.frame, submersibleHull: true }),
+      crushDepth: P.crushDepth({ lowestPressurizedDR: bodyMinDR, frame: d.structure.frame, submersibleHull: true }),
     };
   }
 
@@ -359,23 +487,31 @@ export function computeVe2(design) {
     }
     if (sub.rotors.present) liftArea += areas.rotors * 3;
 
-    const stall = P.stallSpeed({
-      loadedLbs: loadedWeight, staticLift: totalStaticLift, liftArea,
-      streamlining: d.streamlining, responsive: feats.responsive,
-    });
-    const retractable = (sub.turret.present && sub.turret.rotation.startsWith('pop') ? areas.turret : 0) +
-      (sub.wheels.present && sub.wheels.retractable ? areas.wheels : 0);
-    const exposed = 0;
-    const drag = P.aeroDrag({
-      totalAreaSf: totalArea, retractableAreaSf: retractable,
-      streamlining: d.streamlining, responsive: feats.responsive, dragPenalty: exposed,
-    });
+    const popTurretArea = turrets.reduce((a, t, i) => a + (String(t.rotation).startsWith('pop') ? (areas[`turret${i}`] || 0) : 0), 0);
+    const retractable = popTurretArea + (sub.wheels.present && sub.wheels.retractable ? areas.wheels : 0);
+
+    const metallicDR = metallic ? bodyMinDR : 0;
     const caps = P.aerialSpeedCaps({
       streamlining: d.streamlining,
       rotorTL: sub.rotors.present ? sub.rotors.tl : null,
-      metallicDR: ['metal', 'composite', 'laminate'].includes(ARMOR_TYPES[d.armor.type]?.group) ? dr : 0,
+      metallicDR,
     });
-    const speed = P.aerialTopSpeed({ thrustLbs: airThrust, drag: drag.value, caps });
+
+    const computeAir = (lbs, storesLoaded) => {
+      const stall = P.stallSpeed({
+        loadedLbs: lbs, staticLift: totalStaticLift, liftArea,
+        streamlining: d.streamlining, responsive: feats.responsive,
+      });
+      const drag = P.aeroDrag({
+        totalAreaSf: totalArea, retractableAreaSf: retractable,
+        streamlining: d.streamlining, responsive: feats.responsive,
+        dragPenalty: storesLoaded ? 5 * hardpointCount : 0,
+      });
+      const speed = P.aerialTopSpeed({ thrustLbs: airThrust, drag: drag.value, caps });
+      return { stall, drag, speed };
+    };
+
+    const { stall, drag, speed } = computeAir(loadedWeight, false);
     const stallZero = stall.mph === 0;
     const amr = P.aMR({
       stallZero, tl, sizeModifier: sm,
@@ -407,6 +543,14 @@ export function computeVe2(design) {
       takeoffRun: (!stallZero && perf.ground && perf.ground.gAccel > 0)
         ? Math.round(P.takeoffRun(stall.mph, perf.ground.gAccel)) : null,
     };
+    if (hardpointLoad > 0) {
+      const loaded = computeAir(loadedWithStores, true);
+      perf.aerial.withStores = {
+        stallSpeed: loaded.stall.mph,
+        topSpeed: loaded.speed.mph,
+        aAccel: P.aAccel({ thrustLbs: airThrust, loadedLbs: loadedWithStores }).value,
+      };
+    }
     if (!canFly && airThrust > 0) {
       warnings.push(`Stall speed ${stall.mph} mph exceeds ground/water top speed — it cannot take off unaided.`);
     }
@@ -421,7 +565,14 @@ export function computeVe2(design) {
     totalArea: r1(totalArea),
     structuralArea: r1(structuralArea),
     structure: { weight: r1(structWeight), cost: Math.round(structCost) },
-    armor: { weight: r1(armorWeight), cost: Math.round(armorCost), dr, pd },
+    armor: {
+      weight: r1(armorWeight), cost: Math.round(armorCost),
+      mode: d.armor.mode,
+      dr: d.armor.mode === 'overall' ? Math.max(Math.floor(n(d.armor.dr)), 0) : null,
+      pd: d.armor.mode === 'overall' ? overallPD : null,
+      faces: d.armor.mode === 'facing' ? armorFaces : null,
+      bodyMinDR,
+    },
     sealCost: Math.round(sealCost),
     hp,
     weights: {
@@ -429,6 +580,7 @@ export function computeVe2(design) {
       masts: r1(mastWeight), gasbag: r1(gasbagWeight),
       empty: r1(emptyWeight), payload: r1(payload), fuel: r1(fuelWeight),
       loaded: r1(loadedWeight), loadedTons: r2(loadedTons),
+      loadedWithStores: hardpointLoad > 0 ? r1(loadedWithStores) : null,
       submerged: r1(submergedWeight),
     },
     power: { needed: r1(powerNeeded), available: r1(powerAvailable) },
@@ -438,6 +590,13 @@ export function computeVe2(design) {
     stats: { sm, price: Math.round(price), ht },
     perf,
   };
+}
+
+function clampPD(pd, type) {
+  if (!type) return pd;
+  if (type.group === 'wood') return Math.min(pd, 3);
+  if (type.group === 'nonrigid') return Math.min(pd, 2);
+  return pd;
 }
 
 function lookupTL(table, tl) {

@@ -220,3 +220,128 @@ test('computeVe2 flags a sinking boat', async () => {
   assert.ok(r.warnings.some((w) => w.includes('sinks')), r.warnings.join('; '));
   assert.ok(!r.perf.water, 'no water performance when it sinks');
 });
+
+// --- New features: facing armor, presets, migration, hardpoints ------------
+test('facing armor with equal DR matches overall body armor weight', async () => {
+  const { computeVe2, defaultVe2Design } = await import('../js/ve2/vehicle.js');
+  const base = defaultVe2Design();
+  base.components = [{ name: 'ballast', weight: 100, cost: 0, volume: 100, location: 'body' }];
+
+  const overall = structuredClone(base);
+  overall.armor = { type: 'metalStandard', mode: 'overall', dr: 12, faces: null, otherDr: 0 };
+  const ro = computeVe2(overall);
+
+  const facing = structuredClone(base);
+  facing.armor = {
+    type: 'metalStandard', mode: 'facing', dr: 0, otherDr: 0,
+    faces: Object.fromEntries(['front', 'back', 'left', 'right', 'top', 'under'].map((f) => [f, { dr: 12, slope: 0 }])),
+  };
+  const rf = computeVe2(facing);
+
+  // Overall covers the whole structural area; facing covers only the body,
+  // so facing should weigh body/structural fraction of the overall figure.
+  const expected = ro.armor.weight * (ro.areas.body / ro.structuralArea);
+  assert.ok(Math.abs(rf.armor.weight - expected) < 1, `${rf.armor.weight} vs ${expected}`);
+});
+
+test('sloped facing armor multiplies effective DR and adds PD', async () => {
+  const { computeVe2, defaultVe2Design } = await import('../js/ve2/vehicle.js');
+  const d = defaultVe2Design();
+  d.components = [{ name: 'ballast', weight: 100, cost: 0, volume: 100, location: 'body' }];
+  d.armor = {
+    type: 'metalStandard', mode: 'facing', dr: 0, otherDr: 0,
+    faces: {
+      front: { dr: 100, slope: 60 }, back: { dr: 10, slope: 0 },
+      left: { dr: 20, slope: 0 }, right: { dr: 20, slope: 0 },
+      top: { dr: 10 }, under: { dr: 10 },
+    },
+  };
+  const r = computeVe2(d);
+  assert.equal(r.armor.faces.front.effDR, 200);   // 100 × 2 at 60°
+  assert.equal(r.armor.faces.front.pd, 6);        // PD 4 + 2 slope
+  assert.equal(r.armor.faces.back.effDR, 10);
+  // Slope inflates body volume vs an unsloped hull.
+  const flat = structuredClone(d);
+  flat.armor.faces.front.slope = 0;
+  assert.ok(r.volumes.body > computeVe2(flat).volumes.body);
+});
+
+test('all VE2 presets compile without errors', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { VE2_PRESETS } = await import('../js/ve2/presets.js');
+  for (const preset of VE2_PRESETS) {
+    const r = computeVe2(preset);
+    assert.deepEqual(r.errors, [], `${preset.name}: ${r.errors.join('; ')}`);
+  }
+});
+
+test('tank preset: turret, slope, tracked performance', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { VE2_PRESETS } = await import('../js/ve2/presets.js');
+  const r = computeVe2(VE2_PRESETS.find((p) => p.name.includes('Battle Tank')));
+  assert.ok(r.volumes.turret0 > 0);
+  assert.equal(r.armor.faces.front.effDR, 900); // 450 × 2 at 60°
+  assert.equal(r.perf.ground.system, 'tracks');
+  assert.ok(r.perf.ground.topSpeed >= 30 && r.perf.ground.topSpeed <= 60, `speed ${r.perf.ground.topSpeed}`);
+  assert.ok(r.hp.turret1 > 0);
+  assert.ok(r.weights.loaded > 60000 && r.weights.loaded < 160000, `loaded ${r.weights.loaded}`);
+});
+
+test('speedboat preset planes; helicopter preset hovers with stores data', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { VE2_PRESETS } = await import('../js/ve2/presets.js');
+  const boat = computeVe2(VE2_PRESETS.find((p) => p.name.includes('Speedboat')));
+  assert.ok(boat.floats, 'boat floats');
+  assert.ok(boat.perf.water.planing, 'boat planes');
+  assert.ok(boat.perf.water.topSpeed >= 30, `boat speed ${boat.perf.water.topSpeed}`);
+
+  const heli = computeVe2(VE2_PRESETS.find((p) => p.name.includes('Helicopter')));
+  assert.ok(heli.perf.aerial, 'has aerial performance');
+  assert.equal(heli.perf.aerial.stallSpeed, 0, 'stall 0');
+  assert.ok(heli.perf.aerial.topSpeed >= 100 && heli.perf.aerial.topSpeed <= 300, `heli speed ${heli.perf.aerial.topSpeed}`);
+  assert.ok(heli.perf.aerial.withStores, 'hardpoint stats computed');
+  assert.ok(heli.weights.loadedWithStores > heli.weights.loaded);
+});
+
+test('legs give ground performance with leg speed factors', async () => {
+  const { computeVe2, defaultVe2Design } = await import('../js/ve2/vehicle.js');
+  const d = defaultVe2Design();
+  d.subassemblies.wheels.present = false;
+  d.subassemblies.legs = { present: true, count: 2 };
+  d.components = [
+    { name: 'power plant', weight: 300, cost: 1000, volume: 10, kwOut: 50, location: 'body' },
+    { name: 'leg drivetrain', weight: 200, cost: 1000, volume: 8, kwIn: 50, groundKw: 50, location: 'body' },
+    { name: 'crew station', weight: 50, cost: 250, volume: 15, location: 'body' },
+  ];
+  const r = computeVe2(d);
+  assert.deepEqual(r.errors, [], r.errors.join('; '));
+  assert.equal(r.perf.ground.system, 'legs2');
+  assert.equal(r.perf.ground.sf, 8);
+  assert.ok(r.hp.perLeg > 0);
+  assert.equal(r.perf.ground.offRoad, 1); // legs are category I, low GP
+});
+
+test('old single-turret designs migrate', async () => {
+  const { computeVe2, migrateVe2Design, defaultVe2Design } = await import('../js/ve2/vehicle.js');
+  const old = defaultVe2Design();
+  delete old.subassemblies.turrets;
+  old.subassemblies.turret = { present: true, volumeCf: 8, rotation: 'full', slopeDegrees: 0 };
+  old.components = [{ name: 'gun', weight: 100, cost: 100, volume: 2, location: 'turret' }];
+  const migrated = migrateVe2Design(old);
+  assert.equal(migrated.subassemblies.turrets.length, 1);
+  assert.equal(migrated.components[0].location, 'turret0');
+  const r = computeVe2(migrated);
+  assert.ok(r.volumes.turret0 > 0);
+});
+
+test('VE2 markdown export contains the key lines', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { toVe2Markdown } = await import('../js/ve2/export.js');
+  const { VE2_PRESETS } = await import('../js/ve2/presets.js');
+  const preset = VE2_PRESETS[0];
+  const md = toVe2Markdown(preset, computeVe2(preset));
+  assert.ok(md.includes('## TL6 Jeep'));
+  assert.ok(md.includes('**Ground Performance:**'));
+  assert.ok(md.includes('| Empty Wt. |'));
+  assert.ok(md.includes('Hit Points'));
+});
