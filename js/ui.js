@@ -15,6 +15,8 @@ import { downloadText, safeFilename, toMarkdown } from './export.js';
 import { PRESETS } from './presets.js';
 import { deleteDesign, listSaved, loadDesign, saveDesign } from './storage.js';
 import { initGvbLibrary } from './gvb/ui-library.js';
+import { initExplain, refreshExplain } from './help-core.js';
+import { FIELD_HELP, OPTION_HELP, SECTION_HELP, STAT_HELP } from './help-classic.js';
 
 let design = defaultDesign();
 let lastResult = null;
@@ -321,7 +323,7 @@ function render() {
     ['Locations', s.locations],
   ];
   $('stat-table').innerHTML =
-    '<tr>' + cells.map(([h]) => `<th>${h}</th>`).join('') + '</tr>' +
+    '<tr>' + cells.map(([h]) => `<th${STAT_HELP[h] ? ` class="stat-help" title="${escapeHtml(STAT_HELP[h])}"` : ''}>${h}</th>`).join('') + '</tr>' +
     '<tr>' + cells.map(([, v]) => `<td>${v}</td>`).join('') + '</tr>';
 
   const extra = [];
@@ -388,6 +390,7 @@ function replaceDesign(next) {
   design.equipment = structuredClone(next.equipment || []);
   syncFormFromDesign();
   render();
+  refreshExplain();
 }
 
 function refreshSavedList() {
@@ -496,3 +499,10 @@ initToolbar();
 refreshSavedList();
 syncFormFromDesign();
 render();
+initExplain({
+  toggleBtnId: 'btn-explain',
+  storageKey: 'gvb.explain.classic',
+  fieldHelp: FIELD_HELP,
+  optionHelp: OPTION_HELP,
+  sectionHelp: SECTION_HELP,
+});

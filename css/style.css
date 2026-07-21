@@ -242,6 +242,27 @@ input:disabled { background: #eee7d8; color: var(--muted); }
 .help-panel ul { padding-left: 20px; font-size: 13.5px; }
 .loc-legend { columns: 2; }
 
+/* ------------------------------------------------ explain mode */
+.field-help {
+  display: block;
+  font-weight: 400;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.acc-row .field-help { margin-left: 0; }
+.section-help {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: -4px 0 10px;
+  font-style: italic;
+}
+.stat-help {
+  border-bottom: 1px dotted #b3a88f;
+  cursor: help;
+}
+
 /* ------------------------------------------------ VE2 designer */
 .sub-edit { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .sub-edit label { flex-direction: row; align-items: center; gap: 4px; font-weight: 400; font-size: 12.5px; }

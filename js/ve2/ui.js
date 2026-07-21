@@ -12,6 +12,8 @@ import { toVe2Markdown } from './export.js';
 import { to4eMarkdown } from './fourth.js';
 import { VE2_PRESETS } from './presets.js';
 import { initGvbLibrary } from '../gvb/ui-library.js';
+import { initExplain, refreshExplain } from '../help-core.js';
+import { FIELD_HELP, OPTION_HELP, SECTION_HELP, STAT_HELP } from './help.js';
 
 let design = defaultVe2Design();
 let lastResult = null;
@@ -164,14 +166,14 @@ function renderTurrets() {
     const row = document.createElement('div');
     row.className = 'weapon-row';
     row.innerHTML = `
-      <span class="weapon-name">Turret ${i + 1}</span>
+      <span class="weapon-name" title="A rotating housing on top of the body for weapons and sensors. Its rotation ring also eats space inside the body.">Turret ${i + 1}</span>
       <span class="weapon-detail sub-edit">
-        <label>cf <input type="number" data-k="volumeCf" min="0.5" step="0.5" value="${t.volumeCf}"></label>
-        <label>rotation <select data-k="rotation">
+        <label title="Internal space of the turret; it grows automatically to fit its components.">cf <input type="number" data-k="volumeCf" min="0.5" step="0.5" value="${t.volumeCf}"></label>
+        <label title="Full = 360° traverse (rotation space 20% of turret volume). Limited = partial arc (10%). Pop turrets retract into the body — no drag when stowed, but huge rotation space.">rotation <select data-k="rotation">
           ${['full', 'limited', 'popFull', 'popLimited'].map((rt) => `<option value="${rt}" ${t.rotation === rt ? 'selected' : ''}>${rt}</option>`).join('')}
         </select></label>
-        <label>slope° <input type="number" data-k="slopeDegrees" min="0" max="240" step="30" value="${t.slopeDegrees || 0}"></label>
-        <label>DR <input type="number" data-k="dr" min="0" step="1" value="${t.dr || 0}" title="Used in facing-armor mode"></label>
+        <label title="Total degrees of sloped faces: angled armor deflects hits (higher effective DR and PD) but makes the turret bigger.">slope° <input type="number" data-k="slopeDegrees" min="0" max="240" step="30" value="${t.slopeDegrees || 0}"></label>
+        <label title="This turret's own armor (facing-armor mode): DR over its whole surface.">DR <input type="number" data-k="dr" min="0" step="1" value="${t.dr || 0}"></label>
       </span>`;
     row.querySelectorAll('[data-k]').forEach((el) => {
       el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
@@ -202,11 +204,11 @@ function renderSupers() {
     const row = document.createElement('div');
     row.className = 'weapon-row';
     row.innerHTML = `
-      <span class="weapon-name">Superstructure ${i + 1}</span>
+      <span class="weapon-name" title="A fixed cabin or deckhouse rising above the hull — a ship's bridge, a truck's cab box. Houses components; doesn't rotate.">Superstructure ${i + 1}</span>
       <span class="weapon-detail sub-edit">
-        <label>cf <input type="number" data-k="volumeCf" min="0.5" step="0.5" value="${s.volumeCf}"></label>
-        <label>slope° <input type="number" data-k="slopeDegrees" min="0" max="240" step="30" value="${s.slopeDegrees || 0}"></label>
-        <label>DR <input type="number" data-k="dr" min="0" step="1" value="${s.dr || 0}" title="Used in facing-armor mode"></label>
+        <label title="Internal space; grows automatically to fit its components.">cf <input type="number" data-k="volumeCf" min="0.5" step="0.5" value="${s.volumeCf}"></label>
+        <label title="Sloped faces deflect hits at the price of a bigger structure.">slope° <input type="number" data-k="slopeDegrees" min="0" max="240" step="30" value="${s.slopeDegrees || 0}"></label>
+        <label title="This superstructure's own armor (facing-armor mode).">DR <input type="number" data-k="dr" min="0" step="1" value="${s.dr || 0}"></label>
       </span>`;
     row.querySelectorAll('[data-k]').forEach((el) => {
       el.addEventListener('input', () => { s[el.dataset.k] = Number(el.value) || 0; render(); });
@@ -228,8 +230,11 @@ function renderSupers() {
 }
 
 const ARM_OPTS = [
-  ['badGrip', 'bad grip'], ['striker', 'striker'], ['poorCoordination', 'poor coord.'],
-  ['cheap', 'cheap'], ['extendable', 'extendable'],
+  ['badGrip', 'bad grip', 'A simple gripper instead of a hand: half cost, -4 DX on fine manipulation.'],
+  ['striker', 'striker', 'No hand at all — a ram/weapon arm. Half weight, a fifth the cost; can strike but not manipulate.'],
+  ['poorCoordination', 'poor coord.', 'Clumsy hydraulics: half cost, -4 DX on everything.'],
+  ['cheap', 'cheap', 'Lower-tech motor: twice the weight and bulk, half the cost.'],
+  ['extendable', 'extendable', 'Telescopes to double reach; double weight and cost.'],
 ];
 
 function renderArms() {
@@ -240,11 +245,11 @@ function renderArms() {
     const row = document.createElement('div');
     row.className = 'weapon-row';
     row.innerHTML = `
-      <span class="weapon-name">Arm ${i + 1}</span>
+      <span class="weapon-name" title="A robot arm with a motor sized to its ST. Can hold built-in weapons and tools; its reach comes from its size.">Arm ${i + 1}</span>
       <span class="weapon-detail sub-edit">
-        <label>ST <input type="number" data-k="st" min="1" step="1" value="${a.st || 10}"></label>
-        ${ARM_OPTS.map(([k, label]) =>
-          `<label><input type="checkbox" class="arm-opt" data-opt="${k}" ${a.options[k] ? 'checked' : ''}> ${label}</label>`).join('')}
+        <label title="Strength: what the arm can lift and how hard it hits, like character ST. The motor's weight, cost and power scale with it.">ST <input type="number" data-k="st" min="1" step="1" value="${a.st || 10}"></label>
+        ${ARM_OPTS.map(([k, label, tip]) =>
+          `<label title="${tip}"><input type="checkbox" class="arm-opt" data-opt="${k}" ${a.options[k] ? 'checked' : ''}> ${label}</label>`).join('')}
       </span>`;
     row.querySelector('[data-k="st"]').addEventListener('input', (e) => { a.st = Number(e.target.value) || 1; render(); });
     row.querySelectorAll('.arm-opt').forEach((el) => {
@@ -273,9 +278,9 @@ function renderOpenMounts() {
     const row = document.createElement('div');
     row.className = 'weapon-row';
     row.innerHTML = `
-      <span class="weapon-name">Open mount ${i + 1}</span>
+      <span class="weapon-name" title="A weapon or gear station in the open air — a pintle gun, a deck gun. Cheap and light (no enclosing structure), but the gunner and gear are exposed.">Open mount ${i + 1}</span>
       <span class="weapon-detail sub-edit">
-        <label>rotation <select data-k="rotation">
+        <label title="How far the mount can swivel; rotating mounts take a bit more room.">rotation <select data-k="rotation">
           ${['none', 'limited', 'full'].map((rt) => `<option value="${rt}" ${m.rotation === rt ? 'selected' : ''}>${rt}</option>`).join('')}
         </select></label>
       </span>`;
@@ -442,7 +447,9 @@ const round2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
 
 // --- Output ----------------------------------------------------------------
 function row(label, value) {
-  return `<div class="bd-row"><span>${label}</span><span>${value}</span></div>`;
+  const help = STAT_HELP[label];
+  const labelHtml = help ? `<span class="stat-help" title="${esc(help)}">${label}</span>` : label;
+  return `<div class="bd-row"><span>${labelHtml}</span><span>${value}</span></div>`;
 }
 
 function render() {
@@ -613,6 +620,7 @@ function replaceDesign(next) {
   design.components = structuredClone(next.components || []);
   syncForm();
   render();
+  refreshExplain();
 }
 
 function initToolbar() {
@@ -693,3 +701,10 @@ initToolbar();
 refreshSaved();
 syncForm();
 render();
+initExplain({
+  toggleBtnId: 'btn-explain',
+  storageKey: 'gvb.explain.ve2',
+  fieldHelp: FIELD_HELP,
+  optionHelp: OPTION_HELP,
+  sectionHelp: SECTION_HELP,
+});
