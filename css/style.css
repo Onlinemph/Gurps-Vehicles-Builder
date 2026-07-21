@@ -242,6 +242,20 @@ input:disabled { background: #eee7d8; color: var(--muted); }
 .help-panel ul { padding-left: 20px; font-size: 13.5px; }
 .loc-legend { columns: 2; }
 
+/* ------------------------------------------------ component catalog */
+.cat-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.cat-preview-row #cat-preview { flex: 1; min-width: 200px; }
+.cat-loc { flex-direction: row; align-items: center; gap: 6px; font-weight: 400; }
+.cat-loc select { width: auto; }
+#cat-params { margin-top: 6px; }
+#cat-options { margin-top: 6px; }
+
 /* ------------------------------------------------ explain mode */
 .field-help {
   display: block;

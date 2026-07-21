@@ -32,7 +32,13 @@ Two designers are included:
   f/x suffixes, SM from longest dimension, and a checklist of weapons to swap
   for High-Tech/Ultra-Tech equivalents.
 
-Both designers can pull real components from the official **GURPS Vehicle
+  The VE2 designer includes a **built-in component catalog**: ~40 parameterized
+  component families (engines, drivetrains, propellers, jets, rockets, seats,
+  cabins, sensors, radios, tanks, winches, generic weapons...) implementing the
+  book's design formulas — pick one, set its kW/gallons/range, see a live
+  preview, and add it. No data files or hand-typed numbers needed.
+
+Both designers can also pull real components from the official **GURPS Vehicle
 Builder** program's data files via the GVB Library (see below).
 
 ## Features

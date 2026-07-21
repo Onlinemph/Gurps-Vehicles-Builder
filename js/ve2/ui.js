@@ -12,6 +12,7 @@ import { toVe2Markdown } from './export.js';
 import { to4eMarkdown } from './fourth.js';
 import { VE2_PRESETS } from './presets.js';
 import { initGvbLibrary } from '../gvb/ui-library.js';
+import { CATALOG_CATEGORIES, COMPONENT_CATALOG, buildFromCatalog } from './components.js';
 import { initExplain, refreshExplain } from '../help-core.js';
 import { FIELD_HELP, OPTION_HELP, SECTION_HELP, STAT_HELP } from './help.js';
 
@@ -337,6 +338,8 @@ function syncLocationOptions() {
   (design.subassemblies.arms || []).forEach((_, i) => entries.push([`arm${i}`, `Arm ${i + 1}`]));
   const current = $('c-location').value || 'body';
   fillSelect($('c-location'), entries, entries.some(([v]) => v === current) ? current : 'body');
+  const catCurrent = $('cat-location').value || 'body';
+  fillSelect($('cat-location'), entries, entries.some(([v]) => v === catCurrent) ? catCurrent : 'body');
 }
 
 // --- Components ------------------------------------------------------------
@@ -415,6 +418,88 @@ function initComponentAdder() {
     render();
     flash('Component added.');
   });
+}
+
+// ---------------------------------------------------------------------------
+// Built-in component catalog picker
+// ---------------------------------------------------------------------------
+let catEntry = null;
+
+function initCatalog() {
+  fillSelect($('cat-category'), CATALOG_CATEGORIES.map((c) => [c, c]), CATALOG_CATEGORIES[0]);
+  $('cat-category').addEventListener('change', renderCatalogItems);
+  $('cat-item').addEventListener('change', renderCatalogEntry);
+  $('cat-add').addEventListener('click', () => {
+    if (!catEntry) return;
+    const comp = buildCatalogComponent();
+    comp.location = $('cat-location').value || 'body';
+    design.components.push(comp);
+    renderComponents();
+    render();
+    flash(`Added “${comp.name}”.`);
+  });
+  renderCatalogItems();
+}
+
+function renderCatalogItems() {
+  const cat = $('cat-category').value;
+  const items = COMPONENT_CATALOG.filter((c) => c.category === cat);
+  fillSelect($('cat-item'), items.map((c) => [c.key, `${c.name} (TL${c.minTL}${c.maxTL ? `-${c.maxTL}` : '+'})`]), items[0]?.key);
+  renderCatalogEntry();
+}
+
+function renderCatalogEntry() {
+  catEntry = COMPONENT_CATALOG.find((c) => c.key === $('cat-item').value) || null;
+  const params = $('cat-params');
+  const opts = $('cat-options');
+  params.innerHTML = '';
+  opts.innerHTML = '';
+  if (!catEntry) return;
+  $('cat-help').textContent = catEntry.help || '';
+  for (const p of catEntry.params) {
+    const label = document.createElement('label');
+    label.innerHTML = `${esc(p.label)} <input type="number" step="any" data-param="${p.key}" value="${p.def}" min="${p.min ?? 0}"${p.max ? ` max="${p.max}"` : ''}>`;
+    params.appendChild(label);
+  }
+  for (const o of catEntry.options || []) {
+    const label = document.createElement('label');
+    label.className = 'inline';
+    if (o.help) label.title = o.help;
+    label.innerHTML = `<input type="checkbox" data-opt="${o.key}"> ${esc(o.label)}${o.minTL ? ` (TL${o.minTL}+)` : ''}`;
+    opts.appendChild(label);
+  }
+  params.querySelectorAll('input').forEach((el) => el.addEventListener('input', renderCatalogPreview));
+  opts.querySelectorAll('input').forEach((el) => el.addEventListener('change', renderCatalogPreview));
+  renderCatalogPreview();
+}
+
+function buildCatalogComponent() {
+  const params = {};
+  $('cat-params').querySelectorAll('[data-param]').forEach((el) => { params[el.dataset.param] = Number(el.value); });
+  const opts = {};
+  $('cat-options').querySelectorAll('[data-opt]').forEach((el) => { opts[el.dataset.opt] = el.checked; });
+  return buildFromCatalog(catEntry, params, design.tl, opts);
+}
+
+function renderCatalogPreview() {
+  if (!catEntry) { $('cat-preview').textContent = ''; return; }
+  if (design.tl < catEntry.minTL) {
+    $('cat-preview').textContent = `Requires TL ${catEntry.minTL}+ (vehicle is TL${design.tl}).`;
+    $('cat-add').disabled = true;
+    return;
+  }
+  $('cat-add').disabled = false;
+  const c = buildCatalogComponent();
+  const bits = [
+    `${fmt(c.weight, 1)} lb`, `$${fmt(c.cost)}`, `${fmt(c.volume, 2)} cf`,
+    c.kwIn ? `needs ${fmt(c.kwIn, 2)} kW` : '', c.kwOut ? `makes ${fmt(c.kwOut, 1)} kW` : '',
+    c.groundKw ? `${fmt(c.groundKw, 1)} kW ground` : '',
+    c.aquaticThrust ? `${fmt(c.aquaticThrust)} lb water thrust` : '',
+    c.airThrust ? `${fmt(c.airThrust)} lb air thrust` : '',
+    c.staticLift ? `${fmt(c.staticLift)} lb lift` : '',
+    c.fuelGph ? `${fmt(c.fuelGph, 2)} gph` : '',
+  ].filter(Boolean).join(' · ');
+  $('cat-preview').textContent = bits;
 }
 
 // Prefill the component form from a GVB library selection.
@@ -562,6 +647,7 @@ function render() {
   }
 
   $('sheet-body').innerHTML = html;
+  if (catEntry) renderCatalogPreview(); // TL changes affect catalog output
 
   const probs = $('problems');
   probs.innerHTML =
@@ -694,6 +780,7 @@ function flash(msg) {
 // --- Boot ------------------------------------------------------------------
 initStatic();
 bindAll();
+initCatalog();
 initComponentAdder();
 initSubassemblyAdders();
 initGvbLibrary({ vehicleTl: () => design.tl, addEquipment: prefillFromGvb });

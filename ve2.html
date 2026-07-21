@@ -148,7 +148,20 @@
     <div class="card">
       <h2>6 · Components</h2>
       <div id="component-list"></div>
-      <h3>Add component</h3>
+      <h3>Pick from the catalog</h3>
+      <div class="grid2">
+        <label>Category <select id="cat-category"></select></label>
+        <label>Component <select id="cat-item"></select></label>
+      </div>
+      <p class="muted" id="cat-help"></p>
+      <div class="grid3" id="cat-params"></div>
+      <div class="gvb-opts" id="cat-options"></div>
+      <div class="cat-preview-row">
+        <span class="muted" id="cat-preview"></span>
+        <label class="cat-loc">into <select id="cat-location"></select></label>
+        <button class="btn primary" id="cat-add" type="button">Add</button>
+      </div>
+      <h3>Or enter one by hand</h3>
       <div class="grid3">
         <label>Name <input type="text" id="c-name" placeholder="e.g. gasoline engine"></label>
         <label>Weight (lbs) <input type="number" id="c-weight" step="any" value="0"></label>
