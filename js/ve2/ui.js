@@ -9,6 +9,7 @@ import {
 } from './tables.js';
 import { BODY_FACE_KEYS, computeVe2, defaultVe2Design, migrateVe2Design } from './vehicle.js';
 import { toVe2Markdown } from './export.js';
+import { to4eMarkdown } from './fourth.js';
 import { VE2_PRESETS } from './presets.js';
 import { initGvbLibrary } from '../gvb/ui-library.js';
 
@@ -65,6 +66,7 @@ const BINDINGS = [
   ['f-tl', 'tl', 'num'],
   ['f-controls', 'controls', 'text'],
   ['f-streamlining', 'streamlining', 'text'],
+  ['f-length4', 'lengthYds', 'num'],
   ['f-flotation', 'features.flotationHull', 'bool'],
   ['f-submersible', 'features.submersibleHull', 'bool'],
   ['f-sealed', 'features.sealed', 'bool'],
@@ -659,6 +661,10 @@ function initToolbar() {
   });
   $('btn-export-md').addEventListener('click', () => {
     $('md-output').value = toVe2Markdown(design, lastResult || computeVe2(design));
+    $('md-modal').showModal();
+  });
+  $('btn-export-4e').addEventListener('click', () => {
+    $('md-output').value = to4eMarkdown(design, lastResult || computeVe2(design), { lengthYds: design.lengthYds });
     $('md-modal').showModal();
   });
   $('md-copy').addEventListener('click', () => {

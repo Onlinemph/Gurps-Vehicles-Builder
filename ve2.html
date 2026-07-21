@@ -23,6 +23,7 @@
     <button class="btn" id="btn-export-json">Export JSON</button>
     <button class="btn" id="btn-gvb">GVB Library</button>
     <button class="btn" id="btn-export-md">Stat Block</button>
+    <button class="btn" id="btn-export-4e">4e Stat Block</button>
     <button class="btn" id="btn-print">Print</button>
     <input type="file" id="import-file" accept=".json,application/json" hidden>
   </div>
@@ -40,6 +41,8 @@
         <label>Tech Level <input type="number" id="f-tl" min="0" max="16" step="1"></label>
         <label>Maneuver controls <select id="f-controls"></select></label>
         <label>Streamlining <select id="f-streamlining"></select></label>
+        <label>Longest dimension (yds; 0 = estimate — used for the 4e SM)
+          <input type="number" id="f-length4" min="0" step="0.5"></label>
       </div>
     </div>
 

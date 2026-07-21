@@ -66,6 +66,7 @@ export function defaultVe2Design() {
     fuel: { type: 'gasoline', gallons: 0 },
     hardpoints: { count: 0, loadLbs: 0 },
     computeSpace: false,       // report space performance from thrust
+    lengthYds: 0,              // longest dimension for the 4e SM (0 = estimate)
     options: {
       improvedSuspension: false, improvedBrakes: false, allWheelSteering: false,
       allWheelDrive: false, smartwheels: false, rollStabilizers: false,

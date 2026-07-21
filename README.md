@@ -25,8 +25,12 @@ Two designers are included:
   wheels/tracks/halftracks/skids/legs, wings and rotors, masts and gasbags, hardpoints
   (performance with and without stores), fuel endurance (the sample jeep
   reports 5h 33m, matching GVB's own output), exposed-crew drag, space
-  performance, sample designs (jeep, MBT, speedboat, helicopter, combat walker), and a
-  Markdown stat-block export.
+  performance, sample designs (jeep, MBT, speedboat, helicopter, combat walker),
+  a Markdown stat-block export, and a **GURPS 4e conversion** ("4e Stat Block"
+  button): TL shift (3e TL8 → 4e TL9...), HP = 4 × ∛(empty lbs), PD dropped,
+  Move in yards/second, MR/SR → Hnd/SR benchmark heuristics, HT 10-12 with
+  f/x suffixes, SM from longest dimension, and a checklist of weapons to swap
+  for High-Tech/Ultra-Tech equivalents.
 
 Both designers can pull real components from the official **GURPS Vehicle
 Builder** program's data files via the GVB Library (see below).
