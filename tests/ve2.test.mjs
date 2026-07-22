@@ -456,3 +456,38 @@ test('arms below TL7 are an error; arms limit streamlining', async () => {
   const r2 = computeVe2(d2);
   assert.ok(r2.warnings.some((w) => w.includes('cannot have better than Good streamlining')), r2.warnings.join('; '));
 });
+
+// --- Eclipse Phase spacecraft presets ---------------------------------------
+test('all Eclipse Phase presets compile without errors or warnings', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { EP_PRESETS } = await import('../js/ve2/presets-ep.js');
+  assert.equal(EP_PRESETS.length, 4);
+  for (const ship of EP_PRESETS) {
+    const r = computeVe2(ship);
+    assert.deepEqual(r.errors, [], `${ship.name}: ${r.errors.join('; ')}`);
+    assert.deepEqual(r.warnings, [], `${ship.name}: ${r.warnings.join('; ')}`);
+    assert.ok(r.perf.space, `${ship.name} has space performance`);
+  }
+});
+
+test('EP ships hit setting-appropriate accelerations', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { EP_PRESETS } = await import('../js/ve2/presets-ep.js');
+  const g = (name) => computeVe2(EP_PRESETS.find((p) => p.name.includes(name))).perf.space.sAccelG;
+  assert.ok(g('LOTV') >= 1, `shuttle ${g('LOTV')} G — must exceed 1 G to lift off`);
+  assert.ok(g('Courier') > 0.3 && g('Courier') < 1, `courier ${g('Courier')} G`);
+  assert.ok(g('Scum Barge') > 0.05 && g('Scum Barge') < 0.2, `barge ${g('Scum Barge')} G`);
+  assert.ok(g('Interceptor') > 1.5, `interceptor ${g('Interceptor')} G`);
+});
+
+test('LOTV shuttle hovers and flies; barge is SM +9', async () => {
+  const { computeVe2 } = await import('../js/ve2/vehicle.js');
+  const { EP_PRESETS } = await import('../js/ve2/presets-ep.js');
+  const lotv = computeVe2(EP_PRESETS.find((p) => p.name.includes('LOTV')));
+  assert.equal(lotv.perf.aerial.stallSpeed, 0);
+  assert.ok(lotv.perf.aerial.hover);
+  assert.ok(lotv.perf.aerial.topSpeed >= 500, `LOTV air speed ${lotv.perf.aerial.topSpeed}`);
+  const barge = computeVe2(EP_PRESETS.find((p) => p.name.includes('Barge')));
+  assert.equal(barge.stats.sm, 9);
+  assert.ok(!barge.perf.aerial, 'barge has no aerial performance');
+});

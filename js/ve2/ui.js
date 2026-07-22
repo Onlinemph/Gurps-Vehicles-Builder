@@ -11,6 +11,9 @@ import { BODY_FACE_KEYS, computeVe2, defaultVe2Design, migrateVe2Design } from '
 import { toVe2Markdown } from './export.js';
 import { to4eMarkdown } from './fourth.js';
 import { VE2_PRESETS } from './presets.js';
+import { EP_PRESETS } from './presets-ep.js';
+
+const ALL_PRESETS = [...VE2_PRESETS, ...EP_PRESETS];
 import { initGvbLibrary } from '../gvb/ui-library.js';
 import { CATALOG_CATEGORIES, COMPONENT_CATALOG, buildFromCatalog } from './components.js';
 import { initExplain, refreshExplain } from '../help-core.js';
@@ -53,7 +56,7 @@ function initStatic() {
     ['biplane', 'Biplane'], ['triplane', 'Triplane'], ['stub', 'Stub wings'],
   ], design.subassemblies.wings.type);
   fillSelect($('f-fueltype'), Object.entries(FUELS).map(([k, v]) => [k, v.name]), design.fuel.type);
-  fillSelect($('preset-select'), [['', '— Load a sample design —'], ...VE2_PRESETS.map((p, i) => [String(i), p.name])], '');
+  fillSelect($('preset-select'), [['', '— Load a sample design —'], ...ALL_PRESETS.map((p, i) => [String(i), p.name])], '');
 }
 
 // --- Binding ---------------------------------------------------------------
@@ -712,7 +715,7 @@ function replaceDesign(next) {
 function initToolbar() {
   $('preset-select').addEventListener('change', (e) => {
     if (e.target.value === '') return;
-    replaceDesign(VE2_PRESETS[Number(e.target.value)]);
+    replaceDesign(ALL_PRESETS[Number(e.target.value)]);
     e.target.value = '';
     flash(`Loaded “${design.name}”.`);
   });
