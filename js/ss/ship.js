@@ -1,0 +1,257 @@
+// ---------------------------------------------------------------------------
+// GURPS Spaceships — ship assembly. computeShip(design) turns a slot layout
+// into a finished stat block.
+// ---------------------------------------------------------------------------
+
+import {
+  FEATURES, HULLS, SECTIONS, SLOTS_PER_SECTION, airSpeed, baseHT,
+  hndAccelMod, fmtCost as fmtC,
+} from './tables.js';
+import { SYSTEMS } from './systems.js';
+
+export { fmtC as fmtShipCost };
+
+export function defaultShip() {
+  const emptySection = () => Array.from({ length: SLOTS_PER_SECTION }, () => ({ sys: null, opts: {} }));
+  return {
+    name: 'New Spacecraft',
+    tl: 10,
+    sm: 8,
+    streamlined: false,
+    sections: { front: emptySection(), central: emptySection(), rear: emptySection() },
+    cores: [
+      { section: 'front', sys: null, opts: {} },
+      { section: 'rear', sys: null, opts: {} },
+    ],
+    features: {},
+  };
+}
+
+// Delta-V multiplier for 6+ tanks feeding one drive.
+export function tankMultiplier(n) {
+  if (n >= 19) return 3;
+  if (n >= 18) return 2.5;
+  if (n >= 17) return 2.2;
+  if (n >= 16) return 2;
+  if (n >= 15) return 1.8;
+  if (n >= 13) return 1.6;
+  if (n >= 9) return 1.4;
+  if (n >= 6) return 1.2;
+  return 1;
+}
+
+const r2 = (x) => Math.round(x * 100) / 100;
+
+export function computeShip(design) {
+  const errors = [];
+  const warnings = [];
+  const d = design;
+  const hull = HULLS[d.sm];
+  if (!hull) {
+    return { ok: false, errors: [`SM +${d.sm} is outside the SM+5..+15 hull table.`], warnings, stats: null };
+  }
+  const ctx = { streamlined: d.streamlined };
+
+  // Collect all placed systems: {section, slotLabel, isCore, entry, opts, info, cost}
+  const placed = [];
+  for (const section of SECTIONS) {
+    d.sections[section].forEach((slot, i) => {
+      if (!slot.sys) return;
+      const entry = SYSTEMS[slot.sys];
+      if (!entry) return;
+      placed.push(build(entry, slot.opts, section, `[${i + 1}]`, false));
+    });
+  }
+  const coreSections = [];
+  for (const core of d.cores) {
+    if (!core.sys) continue;
+    const entry = SYSTEMS[core.sys];
+    if (!entry) continue;
+    coreSections.push(core.section);
+    placed.push(build(entry, core.opts, core.section, '[core]', true));
+  }
+  if (coreSections.length === 2 && coreSections[0] === coreSections[1]) {
+    errors.push('The two core systems must be in different hull sections.');
+  }
+
+  function build(entry, opts, section, slotLabel, isCore) {
+    const info = entry.info(d.sm, d.tl, opts, ctx) || {};
+    return { entry, opts, section, slotLabel, isCore, info, cost: entry.cost(d.sm, d.tl, opts) || 0 };
+  }
+
+  // --- Validation ----------------------------------------------------------
+  for (const p of placed) {
+    const e = p.entry;
+    if (typeof e.tl === 'number' && d.tl < e.tl) errors.push(`${e.name} requires TL ${e.tl}+.`);
+    if (e.minSM && d.sm < e.minSM) errors.push(`${e.name} requires SM +${e.minSM} or larger.`);
+    if (e.maxSM && d.sm > e.maxSM) errors.push(`${e.name} is only available up to SM +${e.maxSM}.`);
+    if (p.isCore && e.core === false) errors.push(`${e.name} cannot be a core system.`);
+    if (!p.isCore && e.loc === 'rear' && p.section !== 'rear') errors.push(`${e.name} must go in the rear hull.`);
+    if (!p.isCore && e.loc === 'front' && p.section !== 'front') errors.push(`${e.name} must go in the front hull.`);
+    if (p.info.invalid) errors.push(`${e.name}: ${p.info.desc}.`);
+  }
+
+  // --- Accumulate ----------------------------------------------------------
+  const acc = {
+    armor: { front: 0, central: 0, rear: 0 },
+    ppProvided: 0, ppNeeded: 0,
+    cargo: 0, hangar: 0, spareCargo: 0, fuelTanks: 0,
+    cabins: 0, sleeps: 0, seats: 0, controlStations: 0, turrets: 0, ws: 0,
+    ftl: 0, ecm: 0, screenDDR: 0,
+    contragrav: false, engineRoom: false, factory: false,
+    complexity: null, arrayLevel: null,
+    reactionless: [], reaction: [], sails: [],
+  };
+  let systemsCost = 0;
+
+  for (const p of placed) {
+    const i = p.info;
+    systemsCost += p.cost * (d.features.hardenedArmor && p.entry.category === 'Armor' ? 2 : 1);
+    if (i.armorDDR) acc.armor[p.section] += i.armorDDR;
+    if (i.pp) acc.ppProvided += i.pp;
+    if (i.ppNeed) acc.ppNeeded += i.ppNeed;
+    if (i.cargoTons) acc.cargo += i.cargoTons;
+    if (i.hangarTons) acc.hangar += i.hangarTons;
+    if (i.spareCargo) acc.spareCargo += i.spareCargo;
+    if (i.fuelTank) acc.fuelTanks += 1;
+    if (i.cabins) acc.cabins += i.cabins;
+    if (i.sleeps) acc.sleeps += i.sleeps;
+    if (i.seats) acc.seats += i.seats;
+    if (i.controlStations) acc.controlStations += i.controlStations;
+    if (i.turrets) acc.turrets += i.turrets;
+    if (i.ws) acc.ws += i.ws;
+    if (i.ftl) acc.ftl += i.ftl;
+    if (i.ecm) acc.ecm += i.ecm;
+    if (i.screenDDR) acc.screenDDR = Math.max(acc.screenDDR, i.screenDDR);
+    if (i.contragrav) acc.contragrav = true;
+    if (p.entry.key === 'engineRoom') acc.engineRoom = true;
+    if (p.entry.key === 'factory') acc.factory = true;
+    if (i.complexity) acc.complexity = Math.max(acc.complexity ?? 0, i.complexity);
+    if (i.arrayLevel) acc.arrayLevel = Math.max(acc.arrayLevel ?? -99, i.arrayLevel);
+    if (i.engine) {
+      (i.reactionless ? acc.reactionless : acc.reaction).push(p);
+    }
+    if (i.sail) acc.sails.push(p);
+  }
+
+  // Streamlining requires at least one front/central armor system.
+  if (d.streamlined && acc.armor.front === 0 && acc.armor.central === 0) {
+    warnings.push('A streamlined hull needs at least one armor system on the front or central hull.');
+  }
+  if (acc.ecm > 3) warnings.push('Only three defensive ECM systems have any effect.');
+
+  // --- Features ------------------------------------------------------------
+  let featureCost = 0;
+  const smI = d.sm - 5;
+  for (const [key, on] of Object.entries(d.features)) {
+    if (!on) continue;
+    const f = FEATURES[key];
+    if (!f) continue;
+    if (f.streamlinedOnly && !d.streamlined) errors.push(`${f.name} requires a streamlined hull.`);
+    if (f.unstreamlinedOnly && d.streamlined) errors.push(`${f.name} requires an unstreamlined hull.`);
+    if (f.maxSM && d.sm > f.maxSM) errors.push(`${f.name} is limited to SM +${f.maxSM}.`);
+    if (f.minSM && d.sm < f.minSM) errors.push(`${f.name} requires SM +${f.minSM}+.`);
+    if (f.cost) featureCost += f.cost[smI] ?? 0;
+    if (f.flatCost) featureCost += f.flatCost;
+    if (f.table) featureCost += (f.table[d.sm] || [0, 0])[1];
+    if (f.costPerWorkspace) {
+      featureCost += f.costPerWorkspace * acc.ws;
+    }
+  }
+  let workspaces = acc.ws;
+  if (d.features.totalAutomation) workspaces = 0;
+  else if (d.features.highAutomation) workspaces = Math.ceil(workspaces / 10);
+
+  // --- Performance ---------------------------------------------------------
+  const reactionlessG = acc.reactionless.reduce((a, p) => a + p.info.accelG, 0);
+  const reactionG = acc.reaction.reduce((a, p) => a + p.info.accelG, 0);
+  const sailG = acc.sails.reduce((a, p) => a + p.info.accelG, 0);
+  const bestG = Math.max(reactionlessG, reactionG, sailG);
+
+  // Delta-V: tanks feed the reaction drive type with the most engines.
+  let deltaV = 0;
+  let fuelNote = null;
+  if (acc.reaction.length && acc.fuelTanks > 0) {
+    const byKey = {};
+    for (const p of acc.reaction) byKey[p.entry.key] = (byKey[p.entry.key] || 0) + 1;
+    const mainKey = Object.keys(byKey).sort((a, b) => byKey[b] - byKey[a])[0];
+    const dvPer = acc.reaction.find((p) => p.entry.key === mainKey).info.dvPerTank || 0;
+    deltaV = r2(dvPer * acc.fuelTanks * tankMultiplier(acc.fuelTanks));
+    fuelNote = `${acc.fuelTanks} tank(s) of ${acc.reaction.find((p) => p.entry.key === mainKey).info.fuel}`;
+    if (Object.keys(byKey).length > 1) warnings.push('Multiple reaction-drive types: all fuel tanks are assigned to the most numerous type.');
+  }
+
+  // Move string.
+  const hasDrive = bestG > 0;
+  let move = '—';
+  if (reactionlessG > 0 && reactionG > 0) move = `${r2(reactionlessG + reactionG)}G/c (${r2(reactionG)}G/${deltaV} mps reaction)`;
+  else if (reactionlessG > 0) move = `${r2(reactionlessG)}G/c`;
+  else if (reactionG > 0) move = `${r2(reactionG)}G/${deltaV} mps`;
+  else if (sailG > 0) move = `${sailG}G (sail)`;
+
+  // Hnd/SR.
+  let hnd = null;
+  let sr = null;
+  if (hasDrive) {
+    hnd = hull.hnd + hndAccelMod(bestG);
+    sr = hull.sr;
+    if (d.tl <= 8) { hnd -= 1; sr -= 1; }
+  }
+
+  // HT.
+  let ht = baseHT();
+  if (d.sm <= 9 && !acc.engineRoom) ht -= 1;
+  if ((d.features.totalAutomation || d.features.highAutomation) && d.tl <= 9) ht -= 1;
+  if (acc.factory) ht += 1;
+
+  // Occupancy.
+  const crewOcc = acc.controlStations + acc.turrets + workspaces;
+  const longTerm = acc.sleeps;
+  let occ = '0';
+  if (longTerm > 0 && acc.seats === 0) occ = `${longTerm}ASV`;
+  else if (longTerm > 0) occ = `${longTerm}ASV+${acc.seats}SV`;
+  else if (crewOcc + acc.seats > 0) occ = `${crewOcc}+${acc.seats}SV`;
+  const occupants = longTerm > 0 ? longTerm : crewOcc + acc.seats;
+
+  // Load: cargo holds + hangar bays + 0.1 tons per occupant. Spare space in
+  // part-filled weapon batteries is usable cargo but isn't counted here,
+  // matching the book's published designs.
+  const load = r2(acc.cargo + acc.hangar + 0.1 * occupants);
+
+  // dDR string.
+  const ddr = [acc.armor.front, acc.armor.central, acc.armor.rear];
+  const ddrStr = ddr.every((v) => v === ddr[0]) ? String(ddr[0]) : ddr.join('/');
+
+  // Air performance.
+  const canFly = d.features.winged || acc.contragrav || bestG > 1;
+  const air = canFly && hasDrive ? airSpeed(bestG, d.streamlined) : null;
+  let airHnd = null;
+  if (air !== null && hnd !== null) {
+    airHnd = hnd + (acc.contragrav ? 2 : 0) + (d.features.winged ? 4 : 0);
+    airHnd = Math.min(airHnd, 5);
+  }
+
+  const totalCost = systemsCost + featureCost;
+  const slotsUsed = placed.length;
+
+  return {
+    ok: errors.length === 0,
+    errors, warnings, placed,
+    stats: {
+      dstHp: hull.dstHp, hnd, sr, ht,
+      move, accelG: r2(bestG), deltaV, fuelNote,
+      lwt: hull.tons, load, sm: d.sm, occ, occupants,
+      ddr: ddrStr, screenDDR: acc.screenDDR || null,
+      range: acc.ftl > 0 ? `FTL-${acc.ftl}` : null,
+      cost: totalCost, costStr: fmtC(totalCost),
+      airSpeed: air, airHnd,
+      complexity: acc.complexity, arrayLevel: acc.arrayLevel,
+      ppProvided: acc.ppProvided, ppNeeded: acc.ppNeeded,
+      workspaces, crewOcc, cabins: acc.cabins, seats: acc.seats,
+      cargo: r2(acc.cargo + acc.hangar + acc.spareCargo),
+      spareCargo: r2(acc.spareCargo),
+      slotsUsed, slotsTotal: 20,
+      lengthYds: hull.lengthYds,
+    },
+  };
+}

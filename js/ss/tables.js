@@ -29,15 +29,18 @@ export const SECTIONS = ['front', 'central', 'rear'];
 export const SLOTS_PER_SECTION = 6;
 export const CORE_COUNT = 2; // two cores, in different sections
 
-// Cost shorthand: standard 1-3-10 progression from a base at SM+5.
-// pattern(6000) => [6K, 20K, 60K, 200K ... ] (×3.33, ×3 alternating)
+// Cost shorthand: the book's 1-3-10 progression from a base value at SM+5.
+// Steps are ×3 from mantissa 1/2/5 and ×3⅓ from mantissa 1.5/3/6, keeping
+// values on the 1-3-10 ladder (6K → 20K → 60K; 100K → 300K → 1M; ...).
 export function costProgression(baseSm5) {
   const out = [];
   let v = baseSm5;
   for (let i = 0; i < SMS.length; i++) {
     out.push(v);
-    v = (i % 2 === 0) ? v * (10 / 3) : v * 3;
-    v = Math.round(v * 1e6) / 1e6;
+    const mant = v / 10 ** Math.floor(Math.log10(v) + 1e-9);
+    const stepThree = [1, 2, 5].some((m) => Math.abs(mant - m) < 0.01);
+    v = stepThree ? v * 3 : v * (10 / 3);
+    v = Math.round(v);
   }
   return out;
 }

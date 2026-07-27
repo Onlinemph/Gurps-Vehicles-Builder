@@ -4,7 +4,7 @@ A fast, friendly, **zero-dependency** web app for designing GURPS vehicles.
 No build step, no server, no accounts. Open it in a browser (or host the repo
 on GitHub Pages) and start designing.
 
-Two designers are included:
+Three designers are included:
 
 - **`index.html` — Streamlined designer.** An original, easy design system that
   produces GURPS 4e-style stat blocks instantly (ST/HP, Hnd/SR, HT, Move,
@@ -38,8 +38,24 @@ Two designers are included:
   book's design formulas — pick one, set its kW/gallons/range, see a live
   preview, and add it. No data files or hand-typed numbers needed.
 
-Both designers can also pull real components from the official **GURPS Vehicle
-Builder** program's data files via the GVB Library (see below).
+- **`spaceships.html` — GURPS Spaceships designer.** The *GURPS Spaceships*
+  (4e) modular system: pick a hull from SM+5 to SM+15, fill its 20 system
+  slots (six per hull section plus two protected [core] slots), and get the
+  book-format stat line — dST/HP, Hnd/SR, HT, Move, LWt., Load, SM, Occ, dDR,
+  Range, Cost — live. Covers all armor types (ice through exotic laminate,
+  streamlined and unstreamlined), ~25 drives (chemical rockets to
+  super-conversion torches, reactionless drives, sails), power plants and
+  Power Points, fuel tanks with delta-V (including the 6+-tank multipliers),
+  habitats with cabin conversions (luxury/bunkroom/cell/sickbay/steerage),
+  weapon batteries (major/medium/secondary/tertiary with partial loadouts and
+  spare-space-as-cargo), arrays, force screens, stardrives and FTL rating,
+  design features (artificial gravity, spin gravity, wings, stealth,
+  automation...), air speed, and Markdown export. The engine is validated
+  against both of the book's published designs — the Star Flower-class tramp
+  freighter and the Midnight Sun orbital shuttle (see `tests/ss.test.mjs`).
+
+The two vehicle designers can also pull real components from the official
+**GURPS Vehicle Builder** program's data files via the GVB Library (see below).
 
 ## Features
 

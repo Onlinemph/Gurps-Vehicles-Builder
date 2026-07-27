@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GURPS Spaceships Designer</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🚀</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>GURPS Spaceships Designer</h1>
+    <p>The Spaceships (4e) modular system: 20 slots, 5% each.
+      <a href="index.html" style="color:#fff">↩ streamlined designer</a> ·
+      <a href="ve2.html" style="color:#fff">Vehicles 2e designer</a></p>
+  </div>
+  <div class="toolbar">
+    <select id="preset-select" title="Load a sample design"></select>
+    <select id="saved-select" title="Load a saved design"></select>
+    <button class="btn" id="btn-new">New</button>
+    <button class="btn primary" id="btn-save">Save</button>
+    <button class="btn" id="btn-import-json">Import</button>
+    <button class="btn" id="btn-export-json">Export JSON</button>
+    <button class="btn" id="btn-export-md">Stat Block</button>
+    <button class="btn" id="btn-print">Print</button>
+    <button class="btn" id="btn-explain" title="Show a plain-English explanation under every choice">Explain: on</button>
+    <input type="file" id="import-file" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<div id="flash"></div>
+
+<main class="layout">
+  <section class="panel form-panel">
+
+    <div class="card">
+      <h2>1 · Hull</h2>
+      <div class="grid3">
+        <label>Spacecraft name <input type="text" id="f-name"></label>
+        <label>Tech Level <select id="f-tl"></select></label>
+        <label>Size Modifier (SM) <select id="f-sm"></select></label>
+      </div>
+      <label class="acc-row" style="margin-top:8px"><input type="checkbox" id="f-streamlined">
+        <span><b>Streamlined hull</b> <small>needed for fast atmospheric flight; armor gives less dDR</small></span></label>
+      <p class="muted" id="hull-summary"></p>
+    </div>
+
+    <div class="card">
+      <h2>2 · Systems</h2>
+      <p class="muted">Every spacecraft has exactly 20 system slots: six in each hull
+      section plus two protected <b>[core]</b> slots (in different sections). Each system
+      is 5% of the ship's loaded mass. Systems marked <b>[!]</b> are high-energy and each
+      needs a Power Point when in use.</p>
+      <div id="sections"></div>
+      <h3>Core systems</h3>
+      <div id="cores"></div>
+    </div>
+
+    <div class="card">
+      <h2>3 · Design features</h2>
+      <div class="acc-list" id="features"></div>
+    </div>
+
+  </section>
+
+  <section class="panel output-panel" id="print-area">
+    <div class="card sheet">
+      <h2 id="sheet-name">Spacecraft</h2>
+      <p class="sub" id="sheet-sub"></p>
+      <div id="sheet-body"></div>
+    </div>
+    <div class="card" id="problems-card" style="display:none">
+      <h2>Problems</h2>
+      <ul id="problems" class="problems"></ul>
+    </div>
+  </section>
+</main>
+
+<dialog id="md-modal">
+  <h2>Stat block (Markdown)</h2>
+  <textarea id="md-output" rows="18" spellcheck="false"></textarea>
+  <div class="modal-actions">
+    <button class="btn primary" id="md-copy">Copy</button>
+    <button class="btn" id="md-close">Close</button>
+  </div>
+</dialog>
+
+<script type="module" src="js/ss/ui.js"></script>
+</body>
+</html>
