@@ -203,6 +203,7 @@ for (const [key, p] of Object.entries(PLANTS)) SYSTEMS[key] = makePlant(key, p);
 // Habitat conversions: each entry is [cabin-equivalents, sleeps, extra $ each].
 const HAB_CONVERSIONS = {
   luxury: { label: 'luxury cabin', cabins: 2, sleeps: 2 },
+  tlsCabins: { label: 'cabin w/ total life support', cabins: 2, sleeps: 2 },
   bunkrooms: { label: 'bunkroom', cabins: 1, sleeps: 4 },
   cells: { label: 'cell', cabins: 1, sleeps: 4 },
   sickbay: { label: 'sickbay bed', cabins: 1, sleeps: 0 },
@@ -230,9 +231,14 @@ Object.assign(SYSTEMS, {
     key: 'cargoHold', name: 'Cargo hold', category: 'Payload', tl: 0,
     loc: 'any', core: true, he: 0,
     cost: () => 0,
-    info: (sm) => {
+    // opts.reactionMass: the hold carries rock dust/propellant and doubles
+    // as a fuel tank (mass drivers and similar drives "live off the land").
+    info: (sm, tl, opts = {}) => {
       const tons = [0.5, 1.5, 5, 15, 50, 150, 500, 1500, 5000, 15000, 50000, 150000][idx(sm)];
-      return { cargoTons: tons, desc: `${tons} tons capacity` };
+      return {
+        cargoTons: tons, fuelTank: !!opts.reactionMass,
+        desc: `${tons} tons capacity${opts.reactionMass ? ' (reaction mass)' : ''}`,
+      };
     },
   },
   controlRoom: {

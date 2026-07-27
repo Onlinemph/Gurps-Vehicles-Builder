@@ -66,9 +66,14 @@ Three designers are included:
   separate magic/psi Power-Point pools, sapient brains, maws, tails,
   digestive systems, exophase fields, lightspeed and parachronic drives...);
   and SS8's laser rockets, fission air-rams, bioship self-repair, and the
-  advanced-computers switch. Validated against published designs from the
-  supplements — the SS4 Typhoon (SM+4) and SS7 Ether Ironclad compute to
-  their printed costs exactly (see `tests/ss-books.test.mjs`).
+  advanced-computers switch. The SS7/SS8 **system-scaling rules** are in
+  too: build any system at half size for half cost, pack three one-SM-smaller
+  systems (even mixed) into a single slot, or spread one SM-larger system
+  across three — plus cargo holds that double as reaction-mass tanks for
+  mass drivers. Validated against published designs from the supplements —
+  the SS4 Typhoon (SM+4), SS7 Ether Ironclad, and SS8 Mercury HLV compute
+  to their printed costs exactly, and the Nadezhda bioship hits its printed
+  delta-V and Load to the decimal (see `tests/ss-books.test.mjs`).
 
 - **`combat.html` — Spaceships combat tracker.** The full basic space combat
   system from SS1 chapter 4, running on the designer's ship model: load any

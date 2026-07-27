@@ -34,7 +34,9 @@ const OPT_DEFS = {
     { key: 'briefing', label: 'briefing', type: 'int' },
     { key: 'labs', label: 'labs', type: 'int' },
     { key: 'establishments', label: 'establishments', type: 'int' },
+    { key: 'tlsCabins', label: 'total-LS cabins', type: 'int' },
   ],
+  cargoHold: [{ key: 'reactionMass', label: 'reaction mass (counts as fuel tank)', type: 'check' }],
   battery_spinal: [WEAPON_TYPE],
   controlRoom: [{ key: 'removeStations', label: 'stations removed', type: 'int' }],
   gasbag: [{ key: 'gas', label: 'gas', type: 'choice', choices: [['lifting', 'lifting gas'], ['antigravity', 'antigravity gas (×5)']] }],
@@ -177,12 +179,74 @@ function slotRow(slotDef, label, _onChange, pos) {
   sel.addEventListener('change', () => {
     slotDef.sys = sel.value || null;
     slotDef.opts = {};
+    slotDef.sub = undefined;
     update();
   });
   row.appendChild(sel);
-  row.appendChild(optControls(slotDef));
+
+  // SS7/SS8 scaling: half size, three one-SM-smaller systems, or one
+  // SM-larger system spanning three slots.
+  if (slotDef.sys && (bookOn('SS7') || bookOn('SS8') || slotDef.scale)) {
+    const scaleSel = document.createElement('select');
+    scaleSel.className = 'slot-scale';
+    fillSelect(scaleSel, [
+      ['normal', 'full size'], ['half', 'half (½ cost)'],
+      ['smaller', 'smaller ×3 (one slot)'], ['larger', 'larger (3 slots)'],
+    ], slotDef.scale || 'normal');
+    scaleSel.addEventListener('change', () => {
+      slotDef.scale = scaleSel.value === 'normal' ? undefined : scaleSel.value;
+      if (slotDef.scale === 'smaller' && !slotDef.sub) {
+        slotDef.sub = [0, 1, 2].map(() => ({ sys: slotDef.sys, opts: {} }));
+      }
+      if (slotDef.scale !== 'smaller') slotDef.sub = undefined;
+      update();
+    });
+    row.appendChild(scaleSel);
+  }
+
+  if (slotDef.scale !== 'smaller') row.appendChild(optControls(slotDef));
   row.appendChild(descSpan(slotDef, pos.section, false));
+
+  if (slotDef.scale === 'smaller') {
+    slotDef.sub ||= [0, 1, 2].map(() => ({ sys: slotDef.sys, opts: {} }));
+    const subWrap = document.createElement('div');
+    subWrap.className = 'slot-subs';
+    slotDef.sub.forEach((sub, j) => {
+      const subRow = document.createElement('div');
+      subRow.className = 'slot-row slot-sub';
+      const tag = document.createElement('span');
+      tag.className = 'slot-num';
+      tag.textContent = `· ${'abc'[j]}`;
+      subRow.appendChild(tag);
+      const subSel = systemSelect(sub.sys);
+      subSel.addEventListener('change', () => {
+        sub.sys = subSel.value || null;
+        sub.opts = {};
+        update();
+      });
+      subRow.appendChild(subSel);
+      subRow.appendChild(optControls(sub));
+      subRow.appendChild(subDesc(sub));
+      subWrap.appendChild(subRow);
+    });
+    row.appendChild(subWrap);
+  }
   return row;
+}
+
+function subDesc(sub) {
+  const span = document.createElement('small');
+  span.className = 'slot-desc';
+  if (sub.sys) {
+    const entry = SYSTEMS[sub.sys];
+    const sm = design.sm - 1;
+    if (sm < 4) { span.textContent = 'no SM+3 systems exist'; span.classList.add('slot-bad'); return span; }
+    const info = entry.info(sm, design.tl, sub.opts, { streamlined: design.streamlined }) || {};
+    const cost = entry.cost(sm, design.tl, sub.opts) || 0;
+    span.textContent = `at SM+${sm}: ${info.desc || ''} · ${fmtCost(cost)}`;
+    if (info.invalid) span.classList.add('slot-bad');
+  }
+  return span;
 }
 
 function optControls(slotDef) {

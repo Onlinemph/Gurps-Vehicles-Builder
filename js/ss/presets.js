@@ -206,6 +206,75 @@ export const SS_PRESETS = [
     },
   },
   {
+    name: 'Mercury-class Heavy Lift Vehicle (TL10, SS8)',
+    design: {
+      name: 'Mercury-class Heavy Lift Vehicle',
+      tl: 10, sm: 9, streamlined: true,
+      features: {},
+      sections: {
+        front: [
+          slot('armor_lightAlloy'),
+          {
+            sys: 'controlRoom', opts: {}, scale: 'smaller',
+            sub: [
+              { sys: 'controlRoom', opts: { removeStations: 3 } },
+              { sys: 'cargoHold', opts: {} },
+              { sys: 'cargoHold', opts: {} },
+            ],
+          },
+          slot('passengerSeating'), slot('passengerSeating'),
+          slot('passengerSeating'), slot('passengerSeating'),
+        ],
+        central: [
+          slot('armor_lightAlloy'), slot('fuelTank'), slot('fuelTank'),
+          slot('fuelTank'), slot('fuelTank'), slot('fuelTank'),
+        ],
+        rear: [
+          slot('armor_lightAlloy'), slot('armor_lightAlloy'),
+          slot('laserRocket'), slot('laserRocket'),
+          slot('fuelTank'), slot('fuelTank'),
+        ],
+      },
+      cores: [
+        { section: 'central', sys: 'fuelTank', opts: {} },
+        { section: 'rear', sys: 'fuelTank', opts: {} },
+      ],
+    },
+  },
+  {
+    name: 'Nadezhda Bioship (TL10, SS8 — Eclipse Phase ready)',
+    design: {
+      name: 'Nadezhda Bioship',
+      tl: 10, sm: 9, streamlined: false,
+      features: { dynamicChameleon: true, stealth: true, totalAutomation: true, selfHealing: true, requiresNutrients: true },
+      sections: {
+        front: [
+          slot('armor_organic'),
+          slot('controlRoom', { removeStations: 3 }),
+          slot('habitat', { tlsCabins: 4, labs: 4, automed: 1, steerage: 3 }),
+          slot('cargoHold', { reactionMass: true }), slot('cargoHold', { reactionMass: true }),
+          slot('cargoHold', { reactionMass: true }),
+        ],
+        central: [
+          slot('armor_organic'),
+          slot('cargoHold', { reactionMass: true }), slot('cargoHold', { reactionMass: true }),
+          slot('cargoHold', { reactionMass: true }), slot('cargoHold', { reactionMass: true }),
+          slot('cargoHold', { reactionMass: true }),
+        ],
+        rear: [
+          slot('armor_organic'),
+          slot('cargoHold', { reactionMass: true }), slot('cargoHold', { reactionMass: true }),
+          slot('cargoHold', { reactionMass: true }), slot('cargoHold', { reactionMass: true }),
+          slot('massDriver'),
+        ],
+      },
+      cores: [
+        { section: 'central', sys: 'fusionReactor', opts: { deRate: 1 } },
+        { section: 'rear', sys: 'engineRoom', opts: {} },
+      ],
+    },
+  },
+  {
     name: 'Empty hull (start from scratch)',
     design: {
       name: 'New Spacecraft',

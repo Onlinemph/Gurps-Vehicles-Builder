@@ -60,15 +60,38 @@ export function computeShip(design) {
     compTL: d.tl + (d.features?.advancedComputers ? 1 : 0),
   };
 
+  // Systems that may be built at half size for half cost (SS7/SS8).
+  const HALF_OK = ['cargoHold', 'factory', 'fuelTank', 'habitat', 'mining', 'refinery',
+    'openSpace', 'passengerSeating', 'fusionReactor', 'antimatterReactor', 'superFusionReactor'];
+
   // Collect all placed systems: {section, slotLabel, isCore, entry, opts, info, cost}
+  // A slot may hold a normal system, a half-size system (SS7/SS8: half cost,
+  // half output), three one-SM-smaller systems, or one SM-larger system that
+  // also occupies two empty slots in the same section.
   const placed = [];
+  const largerBySection = { front: 0, central: 0, rear: 0 };
+  const emptyBySection = { front: 0, central: 0, rear: 0 };
   for (const section of SECTIONS) {
     d.sections[section].forEach((slot, i) => {
-      if (!slot.sys) return;
+      if (!slot.sys) { emptyBySection[section] += 1; return; }
       const entry = SYSTEMS[slot.sys];
       if (!entry) return;
-      placed.push(build(entry, slot.opts, section, `[${i + 1}]`, false));
+      const scale = slot.scale || 'normal';
+      const label = `[${i + 1}]`;
+      if (scale === 'smaller') {
+        const subs = (slot.sub && slot.sub.length ? slot.sub : [0, 1, 2].map(() => ({ sys: slot.sys, opts: slot.opts })))
+          .filter((s) => s && s.sys && SYSTEMS[s.sys]).slice(0, 3);
+        subs.forEach((s, j) => placed.push(build(SYSTEMS[s.sys], s.opts, section, `${label}${'abc'[j]}`, false, 'smaller')));
+      } else {
+        if (scale === 'larger') largerBySection[section] += 1;
+        placed.push(build(entry, slot.opts, section, label, false, scale));
+      }
     });
+  }
+  for (const section of SECTIONS) {
+    if (largerBySection[section] && emptyBySection[section] < largerBySection[section] * 2) {
+      errors.push(`A larger system spans three slots: leave ${largerBySection[section] * 2} empty slot(s) in the ${section} hull.`);
+    }
   }
   const coreSections = [];
   for (const core of d.cores) {
@@ -82,9 +105,47 @@ export function computeShip(design) {
     errors.push('The two core systems must be in different hull sections.');
   }
 
-  function build(entry, opts, section, slotLabel, isCore) {
-    const info = entry.info(d.sm, d.tl, opts, ctx) || {};
-    let cost = entry.cost(d.sm, d.tl, opts) || 0;
+  function build(entry, opts, section, slotLabel, isCore, scale = 'normal') {
+    const statSM = scale === 'smaller' ? d.sm - 1 : scale === 'larger' ? d.sm + 1 : d.sm;
+    const info = { ...(entry.info(statSM, d.tl, opts, ctx) || {}) };
+    let cost = entry.cost(statSM, d.tl, opts) || 0;
+    if (scale === 'smaller') {
+      // Special cases: armor gives 1/3 of the FULL-size dDR; engines and
+      // sails 1/3 acceleration; tanks count as 1/3 tank; smaller control
+      // rooms cost -1 Hnd and SR; smaller plants power only smaller systems.
+      if (info.armorDDR != null) {
+        const full = entry.info(d.sm, d.tl, opts, ctx) || {};
+        info.armorDDR = full.armorDDR === null ? null : (full.armorDDR || 0) / 3;
+      }
+      if (info.engine || info.sail) info.accelG = (info.accelG || 0) / 3;
+      if (info.fuelTank) info.tankFraction = 1 / 3;
+      if (info.screenDDR) info.screenDDR = Math.floor(info.screenDDR / 3);
+      if (entry.key === 'controlRoom' || entry.key === 'sapientBrain') info.hndPenalty = 1;
+      if (info.pp) info.smallPlant = true;
+      info.smaller = true;
+    } else if (scale === 'half') {
+      if (!HALF_OK.includes(entry.key)) {
+        errors.push(`${entry.name} cannot be built at half size (only cargo, factories, fuel tanks, habitats, mining/refinery, open space, seating, and fusion/antimatter plants).`);
+      }
+      cost *= 0.5;
+      for (const k of ['cargoTons', 'sleeps', 'cabins', 'seats', 'hibernation', 'pp', 'openAreas']) {
+        if (info[k]) info[k] = info[k] / 2;
+      }
+      if (info.fuelTank) info.tankFraction = 0.5;
+      info.half = true;
+    } else if (scale === 'larger') {
+      // Larger defenses give double dDR instead of the SM+1 table value.
+      if (info.armorDDR != null) {
+        const own = entry.info(d.sm, d.tl, opts, ctx) || {};
+        info.armorDDR = own.armorDDR === null ? null : (own.armorDDR || 0) * 2;
+      }
+      if (info.screenDDR) {
+        const own = entry.info(d.sm, d.tl, opts, ctx) || {};
+        info.screenDDR = (own.screenDDR || 0) * 2;
+      }
+      if (info.ppNeed) info.ppNeed *= 3; // three high-energy systems' worth
+      info.larger = true;
+    }
     // SS7: magic-/psi-powered high-energy systems are half price and draw
     // from the matching Power Point pool.
     let ppPool = 'normal';
@@ -92,15 +153,15 @@ export function computeShip(design) {
       cost *= 0.5;
       ppPool = opts.powered;
     }
-    return { entry, opts: opts || {}, section, slotLabel, isCore, info, cost, ppPool };
+    return { entry, opts: opts || {}, section, slotLabel, isCore, info, cost, ppPool, scale, statSM };
   }
 
   // --- Validation ----------------------------------------------------------
   for (const p of placed) {
     const e = p.entry;
     if (typeof e.tl === 'number' && e.tl > 0 && d.tl < e.tl) errors.push(`${e.name} requires TL ${e.tl}+.`);
-    if (e.minSM && d.sm < e.minSM) errors.push(`${e.name} requires SM +${e.minSM} or larger.`);
-    if (e.maxSM && d.sm > e.maxSM) errors.push(`${e.name} is only available up to SM +${e.maxSM}.`);
+    if (e.minSM && p.statSM < e.minSM) errors.push(`${e.name} requires SM +${e.minSM} or larger.`);
+    if (e.maxSM && p.statSM > e.maxSM) errors.push(`${e.name} is only available up to SM +${e.maxSM}.`);
     if (p.isCore && e.core === false) errors.push(`${e.name} cannot be a core system.`);
     if (e.coreOnly && !p.isCore) errors.push(`${e.name} must occupy a [core] slot.`);
     if (!p.isCore && e.loc === 'rear' && p.section !== 'rear') errors.push(`${e.name} must go in the rear hull.`);
@@ -150,7 +211,9 @@ export function computeShip(design) {
     if (i.cargoTons) acc.cargo += i.cargoTons;
     if (i.hangarTons) acc.hangar += i.hangarTons;
     if (i.spareCargo) acc.spareCargo += i.spareCargo;
-    if (i.fuelTank) acc.fuelTanks += 1;
+    if (i.fuelTank) acc.fuelTanks += i.tankFraction ?? 1;
+    if (i.hndPenalty) acc.hndPenalty = (acc.hndPenalty || 0) + i.hndPenalty;
+    if (i.smallPlant) acc.smallPlant = true;
     if (i.cabins) acc.cabins += i.cabins;
     if (i.sleeps) acc.sleeps += i.sleeps;
     if (i.hibernation) acc.hibernation += i.hibernation;
@@ -188,6 +251,9 @@ export function computeShip(design) {
   if (acc.ecm > 3) warnings.push('Only three defensive ECM systems have any effect.');
   if (acc.mirrorUsers > acc.solarMirrors) {
     warnings.push('Each solar boiler or solar thermal rocket needs its own solar mirror system.');
+  }
+  if (acc.smallPlant) {
+    warnings.push('Smaller power plants can only power other scaled-down systems in the same location.');
   }
 
   // --- Features ------------------------------------------------------------
@@ -229,8 +295,8 @@ export function computeShip(design) {
     for (const p of acc.reaction) byKey[p.entry.key] = (byKey[p.entry.key] || 0) + 1;
     const mainKey = Object.keys(byKey).sort((a, b) => byKey[b] - byKey[a])[0];
     const dvPer = acc.reaction.find((p) => p.entry.key === mainKey).info.dvPerTank || 0;
-    deltaV = r2(dvPer * acc.fuelTanks * tankMultiplier(acc.fuelTanks));
-    fuelNote = `${acc.fuelTanks} tank(s) of ${acc.reaction.find((p) => p.entry.key === mainKey).info.fuel}`;
+    deltaV = r2(dvPer * acc.fuelTanks * tankMultiplier(Math.floor(acc.fuelTanks)));
+    fuelNote = `${r2(acc.fuelTanks)} tank(s) of ${acc.reaction.find((p) => p.entry.key === mainKey).info.fuel}`;
     if (Object.keys(byKey).length > 1) warnings.push('Multiple reaction-drive types: all fuel tanks are assigned to the most numerous type.');
   }
 
@@ -249,6 +315,7 @@ export function computeShip(design) {
     hnd = hull.hnd + hndAccelMod(bestG);
     sr = hull.sr;
     if (d.tl <= 8) { hnd -= 1; sr -= 1; }
+    if (acc.hndPenalty) { hnd -= 1; sr -= 1; } // smaller control room
   }
 
   // HT.
@@ -275,8 +342,8 @@ export function computeShip(design) {
   // matching the book's published designs.
   const load = r2(acc.cargo + acc.hangar + 0.1 * occupants);
 
-  // dDR string.
-  const ddr = [acc.armor.front, acc.armor.central, acc.armor.rear];
+  // dDR string (smaller armor contributes thirds; round the total down).
+  const ddr = [acc.armor.front, acc.armor.central, acc.armor.rear].map((v) => Math.floor(v));
   const ddrStr = ddr.every((v) => v === ddr[0]) ? String(ddr[0]) : ddr.join('/');
 
   // Air performance. Jets, rotors, lift armor and gasbags can all fly a ship
@@ -318,7 +385,14 @@ export function computeShip(design) {
   let totalCost = systemsCost + featureCost;
   if (d.quality === 'cheap') totalCost *= 0.5;
   else if (d.quality === 'veryCheap') totalCost *= 0.2;
-  const slotsUsed = placed.length;
+  // Physical slots: a "smaller ×3" bundle is one slot; a larger system is three.
+  let slotsUsed = d.cores.filter((c) => c.sys).length;
+  for (const section of SECTIONS) {
+    for (const slot of d.sections[section]) {
+      if (!slot.sys) continue;
+      slotsUsed += (slot.scale === 'larger') ? 3 : 1;
+    }
+  }
 
   return {
     ok: errors.length === 0,

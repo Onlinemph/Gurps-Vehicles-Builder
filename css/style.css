@@ -488,3 +488,6 @@ dialog textarea { font-family: ui-monospace, Consolas, monospace; font-size: 12.
   white-space: pre-wrap;
 }
 .mod { white-space: nowrap; }
+.slot-scale { max-width: 170px; font-size: 12px; }
+.slot-subs { flex-basis: 100%; padding-left: 40px; border-left: 2px dashed var(--line); margin-left: 12px; }
+.slot-sub { border-bottom: none; padding: 2px 0; }
