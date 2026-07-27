@@ -94,6 +94,21 @@ Three designers are included:
   hex-range calculator, a copyable combat log, and encounter save/load
   (see `tests/ss-combat.test.mjs`).
 
+- **`tactical.html` — Spaceships tactical hex map (SS3).** A zero-dependency
+  hex-grid VTT for GURPS Spaceships 3's tactical combat: pan/zoom SVG map,
+  Newtonian vector movement (ships coast every round; thrust changes the
+  velocity vector within the Thrust Rating from the book's
+  velocity/thrust/burn conversion tables, and reaction drives spend real
+  delta-V as Burn Points), facing-change limits by SM and turn length,
+  firing arcs by hull section and mount, beam ranges in hexes (full/half
+  damage per weapon family and map scale), the hex range and
+  relative-velocity modifier tables, ballistic damage with the scale-factor
+  rules, and missile salvos as live map objects that seek their targets
+  across rounds on their own thrust and burn points before resolving with
+  the full damage pipeline. Ships come straight from the designer with the
+  same clickable damage diagrams, and battles save/load
+  (see `tests/ss-tactical.test.mjs`).
+
 The two vehicle designers can also pull real components from the official
 **GURPS Vehicle Builder** program's data files via the GVB Library (see below).
 

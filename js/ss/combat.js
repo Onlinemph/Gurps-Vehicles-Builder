@@ -121,7 +121,7 @@ const RANGE_COLS = { 0: R0, 1: R1, 2: R2, 3: R3 };
 
 // Beam types (SS1 Beam Weapon Table + SS7 lightning cannon).
 export const BEAM_TYPES = {
-  laser: { name: 'Laser', tl: 9, sAcc: 0, rangeCol: 3, rcl: 1, div: 2, dmg: 1, mods: 'burn' },
+  laser: { name: 'Laser', tl: 9, sAcc: 0, rangeCol: 2, rcl: 1, div: 2, dmg: 1, mods: 'burn' },
   uvLaser: { name: 'UV laser', tl: 10, sAcc: 0, rangeCol: 3, rcl: 1, div: 2, dmg: 1, mods: 'burn' },
   xrayLaser: { name: 'X-ray laser', tl: 11, sAcc: 0, rangeCol: 3, rcl: 1, div: 5, dmg: 1, mods: 'burn sur' },
   graser: { name: 'Graser', tl: 12, sAcc: 0, rangeCol: 3, rcl: 1, div: 10, dmg: 1, mods: 'burn sur' },

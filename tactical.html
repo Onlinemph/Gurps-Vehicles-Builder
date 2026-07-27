@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GURPS Spaceships Tactical Map</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🛰️</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <h1>GURPS Spaceships Tactical Map</h1>
+    <p>SS3 hex combat: vector movement, thrust &amp; burn points, arcs, missiles.
+      <a href="combat.html" style="color:#fff">↩ combat tracker</a> ·
+      <a href="spaceships.html" style="color:#fff">ship designer</a></p>
+  </div>
+  <div class="toolbar">
+    <select id="add-preset" title="Add a sample ship"></select>
+    <select id="add-saved" title="Add a saved design"></select>
+    <button class="btn" id="btn-save">Save battle</button>
+    <button class="btn" id="btn-load">Load battle</button>
+    <button class="btn" id="btn-clear">Clear</button>
+  </div>
+</header>
+
+<div id="flash"></div>
+
+<main class="tac-layout">
+  <section class="tac-map-panel">
+    <svg id="map" tabindex="0"></svg>
+    <div class="tac-mapbar">
+      <label>Hexes <select id="tac-scale"></select></label>
+      <label>Turn <select id="tac-turn"></select></label>
+      <span class="muted" id="map-hint">Drag to pan · wheel to zoom · click a ship to select · click another ship to target</span>
+    </div>
+  </section>
+
+  <section class="tac-side">
+    <div class="card">
+      <h2>Round <span id="round-no">1</span></h2>
+      <div id="turn-order" class="turn-order"></div>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <button class="btn primary" id="btn-end-round">Missiles move &amp; next round</button>
+      </div>
+    </div>
+
+    <div class="card" id="sel-card" style="display:none">
+      <h2 id="sel-name">Ship</h2>
+      <p class="muted" id="sel-stats"></p>
+      <div id="sel-move"></div>
+      <div class="dmg-grid" id="sel-dmg"></div>
+    </div>
+
+    <div class="card" id="atk-card" style="display:none">
+      <h2>Attack <span id="atk-vs" class="muted"></span></h2>
+      <div class="grid2">
+        <label>Weapon <select id="atk-weapon"></select></label>
+        <label id="atk-extra-label">Beam type <select id="atk-extra"></select></label>
+      </div>
+      <div class="grid3">
+        <label>Shots <input type="number" id="atk-shots" min="1" value="1"></label>
+        <label>Gunner skill <input type="number" id="atk-skill-in" min="3" max="25" value="12"></label>
+        <label>&nbsp;<span id="atk-range" class="muted"></span></label>
+      </div>
+      <div id="atk-mods" class="muted" style="font-size:12px"></div>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <span id="atk-eff" style="font-weight:700"></span>
+        <button class="btn primary" id="btn-fire">Fire</button>
+        <button class="btn" id="btn-launch" style="display:none">Launch salvo</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Log</h2>
+      <div id="log" class="combat-log" style="max-height:220px"></div>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="js/ss/tactical-ui.js"></script>
+</body>
+</html>
