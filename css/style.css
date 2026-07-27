@@ -436,3 +436,55 @@ dialog textarea { font-family: ui-monospace, Consolas, monospace; font-size: 12.
 .slot-opts select { padding: 3px 6px; font-size: 12.5px; }
 .slot-desc { color: var(--muted); font-size: 11.5px; flex-basis: 100%; padding-left: 52px; }
 .slot-desc.slot-bad { color: var(--err); font-weight: 600; }
+
+/* ------------------------------------------------ Combat tracker */
+.combatant .cmb-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.combatant .cmb-head h2 { margin: 0; }
+.dhp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+.dhp-row .weight-bar { flex: 1; }
+.dhp-label { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.skill-pair { display: inline-flex; gap: 6px; }
+.skill-pair input { width: 58px; }
+.dmg-grid { margin-top: 8px; }
+.dmg-section { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
+.dmg-label { font-weight: 700; font-size: 12px; width: 16px; color: var(--accent); }
+.dmg-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  background: #e7f3e2;
+  user-select: none;
+}
+.dmg-cell.disabled { background: #ffe9b3; }
+.dmg-cell.destroyed { background: #f3c1bb; text-decoration: line-through; }
+.dmg-cell.empty { background: transparent; color: var(--muted); cursor: default; }
+.dmg-hint { font-size: 11px; margin: 4px 0 0; }
+.combat-log {
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  background: #faf6ec;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+.mod { white-space: nowrap; }

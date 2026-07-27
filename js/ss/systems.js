@@ -527,6 +527,7 @@ for (const [key, b] of Object.entries(BATTERY)) {
         spareCargo: freed,
         ppNeed: type === 'beam' ? 1 : 0,
         ws: b.ws[i] ?? 0,
+        output: b.output[i], gunCal: b.gun[i], launcherCal: b.launcher[i], dDam: b.dDam[i],
         desc: `${n}× ${armament} in ${mount}s${freed ? `; ${freed} tons spare cargo` : ''}`,
       };
     },
@@ -547,6 +548,7 @@ SYSTEMS.battery_spinal = {
       weapons: 1, spinalFront: true,
       ppNeed: 3,
       ws: SPINAL.ws[i],
+      output: SPINAL.output[i], gunCal: SPINAL.gun[i], launcherCal: SPINAL.launcher[i], dDam: SPINAL.dDam[i],
       desc: `fixed ${armament}; needs central [core] + rear spinal sections`,
     };
   },

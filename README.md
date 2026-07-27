@@ -70,6 +70,25 @@ Three designers are included:
   supplements — the SS4 Typhoon (SM+4) and SS7 Ether Ironclad compute to
   their printed costs exactly (see `tests/ss-books.test.mjs`).
 
+- **`combat.html` — Spaceships combat tracker.** The full basic space combat
+  system from SS1 chapter 4, running on the designer's ship model: load any
+  saved design or preset into an encounter, set combat scale, turn length,
+  facings and pilot maneuvers, and fight. The attack console computes every
+  to-hit modifier from the rules (target SM, sAcc, range band from the
+  situation table, ECM vs tactical arrays, cloaking, streamlined hulls,
+  rapid-fire bonuses, proximity fusing, relative-velocity ladders for
+  ballistic attacks), rolls 3d with margin-based multi-hits by Recoil, offers
+  the dodge (Piloting/2 + Handling + turn-length and ECM bonuses), then runs
+  the whole damage pipeline: semi-ablative force screens, armor divisors,
+  destroyed-armor holes, 1d hit location with the book's skip-upward rule
+  into the core, disable/destroy thresholds at 10%/50% of dHP, volatile
+  system warnings, 0-dHP penalties and -1×dHP destruction checks. Every
+  knocked-out system updates a clickable damage diagram and the ship's
+  degraded stats (lose an engine and your acceleration drops) live. Includes
+  conventional/nuclear/antimatter warheads, collisions, an SS3 tactical
+  hex-range calculator, a copyable combat log, and encounter save/load
+  (see `tests/ss-combat.test.mjs`).
+
 The two vehicle designers can also pull real components from the official
 **GURPS Vehicle Builder** program's data files via the GVB Library (see below).
 
