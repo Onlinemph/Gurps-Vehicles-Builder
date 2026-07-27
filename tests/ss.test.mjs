@@ -7,11 +7,11 @@ import { HULLS, airSpeed, costProgression, fmtCost } from '../js/ss/tables.js';
 import { SYSTEMS } from '../js/ss/systems.js';
 import { computeShip, defaultShip, tankMultiplier } from '../js/ss/ship.js';
 
-test('cost progression follows the 1-3-10 ladder', () => {
-  assert.deepEqual(costProgression(6e3).slice(0, 5), [6e3, 20e3, 60e3, 200e3, 600e3]);
-  assert.deepEqual(costProgression(100e3).slice(0, 4), [100e3, 300e3, 1e6, 3e6]);
-  assert.deepEqual(costProgression(15e3).slice(0, 4), [15e3, 50e3, 150e3, 500e3]);
-  assert.deepEqual(costProgression(2e6).slice(0, 4), [2e6, 6e6, 20e6, 60e6]);
+test('cost progression follows the 1-3-10 ladder (SM+4 first)', () => {
+  assert.deepEqual(costProgression(6e3).slice(0, 6), [2e3, 6e3, 20e3, 60e3, 200e3, 600e3]);
+  assert.deepEqual(costProgression(100e3).slice(0, 5), [30e3, 100e3, 300e3, 1e6, 3e6]);
+  assert.deepEqual(costProgression(15e3).slice(0, 5), [5e3, 15e3, 50e3, 150e3, 500e3]);
+  assert.deepEqual(costProgression(2e6).slice(0, 5), [600e3, 2e6, 6e6, 20e6, 60e6]);
 });
 
 test('hull table and air speed', () => {

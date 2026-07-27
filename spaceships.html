@@ -42,9 +42,20 @@
         <label>Tech Level <select id="f-tl"></select></label>
         <label>Size Modifier (SM) <select id="f-sm"></select></label>
       </div>
+      <div class="grid2" style="margin-top:8px">
+        <label>Ship quality (SS2) <select id="f-quality">
+          <option value="normal">New (full price)</option>
+          <option value="cheap">Cheap (½ price, HT -2)</option>
+          <option value="veryCheap">Very cheap (⅕ price, HT -4)</option>
+        </select></label>
+      </div>
       <label class="acc-row" style="margin-top:8px"><input type="checkbox" id="f-streamlined">
         <span><b>Streamlined hull</b> <small>needed for fast atmospheric flight; armor gives less dDR</small></span></label>
       <p class="muted" id="hull-summary"></p>
+      <h3>Source books</h3>
+      <p class="muted">GURPS Spaceships (SS1) is always on. Enable the supplements whose
+      systems and options you want in the pickers.</p>
+      <div class="acc-list" id="books"></div>
     </div>
 
     <div class="card">

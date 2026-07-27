@@ -3,8 +3,9 @@
 // and renders the computed stat block on every change.
 // ---------------------------------------------------------------------------
 
-import { FEATURES, HULLS, SECTIONS, SMS, fmtCost } from './tables.js';
-import { SYSTEMS, SYSTEM_LIST } from './systems.js';
+import { BOOKS, FEATURES, HULLS, SECTIONS, SMS, fmtCost } from './tables.js';
+import { SYSTEMS } from './systems.js';
+import './systems-books.js';
 import { computeShip, defaultShip } from './ship.js';
 import { toSsMarkdown } from './export.js';
 import { SS_PRESETS } from './presets.js';
@@ -17,22 +18,57 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (x, d = 0) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString('en-US');
 
-// Option controls per system. type: 'int' or 'choice'.
+// Option controls per system. type: 'int', 'choice' or 'check'.
+const WEAPON_TYPE = { key: 'weaponType', label: 'type', type: 'choice', choices: [['beam', 'beam'], ['gun', 'gun'], ['missile', 'missile launcher']] };
 const OPT_DEFS = {
   habitat: [
-    { key: 'luxury', label: 'luxury cabins', type: 'int' },
+    { key: 'luxury', label: 'luxury', type: 'int' },
     { key: 'bunkrooms', label: 'bunkrooms', type: 'int' },
     { key: 'cells', label: 'cells', type: 'int' },
     { key: 'sickbay', label: 'sickbay beds', type: 'int' },
-    { key: 'steerage', label: 'steerage (cabins→cargo)', type: 'int' },
+    { key: 'automed', label: 'automed beds', type: 'int' },
+    { key: 'steerage', label: 'steerage', type: 'int' },
+    { key: 'hibernation', label: 'hibernation', type: 'int' },
+    { key: 'growthTanks', label: 'growth tanks', type: 'int' },
+    { key: 'offices', label: 'offices', type: 'int' },
+    { key: 'briefing', label: 'briefing', type: 'int' },
+    { key: 'labs', label: 'labs', type: 'int' },
+    { key: 'establishments', label: 'establishments', type: 'int' },
   ],
+  battery_spinal: [WEAPON_TYPE],
+  controlRoom: [{ key: 'removeStations', label: 'stations removed', type: 'int' }],
+  gasbag: [{ key: 'gas', label: 'gas', type: 'choice', choices: [['lifting', 'lifting gas'], ['antigravity', 'antigravity gas (×5)']] }],
+  digestiveSystem: [{ key: 'damageType', label: 'digests by', type: 'choice', choices: [['crushing', 'crushing (½ cost)'], ['burning', 'burning'], ['cutting', 'cutting'], ['corrosion', 'corrosion']] }],
+  parachronicFlux: [
+    { key: 'timeFlux', label: 'time travel (×10)', type: 'check' },
+    { key: 'anywhere', label: 'anywhere (×25)', type: 'check' },
+    { key: 'speedLimited', label: 'speed-limited (×½)', type: 'check' },
+  ],
+  tachyonSail: [{ key: 'hypersail', label: 'hypersail (×2)', type: 'check' }],
+  sapientBrain: [{ key: 'psionic', label: 'psionic (×4)', type: 'check' }],
+  turbofan: [{ key: 'afterburning', label: 'afterburning (×1.5)', type: 'check' }],
+  maw: [{ key: 'cutting', label: 'cutting (×1.5)', type: 'check' }],
+  tail: [{ key: 'tailType', label: 'variant', type: 'choice', choices: [['striking', 'striking'], ['impaling', 'impaling'], ['prehensile', 'prehensile'], ['weapon', 'weapon tail']] }],
+  fusionPulse: [{ key: 'amAugmented', label: 'antimatter-augmented (SS8)', type: 'check' }],
+  advFusionPulse: [{ key: 'amAugmented', label: 'antimatter-augmented (SS8)', type: 'check' }],
 };
 for (const key of ['battery_major', 'battery_medium', 'battery_secondary', 'battery_tertiary']) {
   OPT_DEFS[key] = [
     { key: 'count', label: 'weapons', type: 'int', min: 1 },
-    { key: 'weaponType', label: 'type', type: 'choice', choices: [['beam', 'beam'], ['gun', 'gun'], ['missile', 'missile launcher']] },
+    WEAPON_TYPE,
     { key: 'mount', label: 'mount', type: 'choice', choices: [['turret', 'turrets'], ['fixed', 'fixed']] },
   ];
+}
+for (const key of ['fusionReactor', 'antimatterReactor', 'superFusionReactor', 'vacuumEnergy']) {
+  OPT_DEFS[key] = [{ key: 'deRate', label: 'de-rate (-PP)', type: 'int' }];
+}
+
+// SS7's magic/psi power option applies to any high-energy system.
+const POWERED_OPT = { key: 'powered', label: 'powered by', type: 'choice', choices: [['normal', 'normal PP'], ['magic', 'magic PP (½ cost)'], ['psi', 'psi PP (½ cost)']] };
+
+function bookOn(source) {
+  if (!source) return true;
+  return source.split('/').some((b) => design.books?.[b] !== false);
 }
 
 // --- Static selects --------------------------------------------------------
@@ -49,7 +85,9 @@ function fillSelect(el, entries, selected) {
 
 function sysLabel(s) {
   const bang = s.he ? ' [!]' : '';
-  return `${s.name}${bang} (TL${s.tl || 7}${s.superscience ? '^' : ''})`;
+  const tl = s.tl ? `TL${s.tl}${s.superscience ? '^' : ''}` : (s.superscience ? 'TL^' : 'TL0');
+  const book = s.source ? ` · ${s.source}` : '';
+  return `${s.name}${bang} (${tl}${book})`;
 }
 
 function systemSelect(current, { coreOnly = false } = {}) {
@@ -59,8 +97,9 @@ function systemSelect(current, { coreOnly = false } = {}) {
   none.textContent = '— empty —';
   sel.appendChild(none);
   const byCat = {};
-  for (const s of SYSTEM_LIST) {
+  for (const s of Object.values(SYSTEMS)) {
     if (coreOnly && !s.core) continue;
+    if (!bookOn(s.source) && s.key !== current) continue;
     (byCat[s.category] ||= []).push(s);
   }
   for (const [cat, list] of Object.entries(byCat)) {
@@ -149,10 +188,24 @@ function slotRow(slotDef, label, _onChange, pos) {
 function optControls(slotDef) {
   const wrap = document.createElement('span');
   wrap.className = 'slot-opts';
-  const defs = slotDef.sys ? OPT_DEFS[slotDef.sys] : null;
-  if (!defs) return wrap;
+  if (!slotDef.sys) return wrap;
+  const defs = [...(OPT_DEFS[slotDef.sys] || [])];
+  const entry = SYSTEMS[slotDef.sys];
+  if (entry?.he > 0 && bookOn('SS7')) defs.push(POWERED_OPT);
   for (const def of defs) {
     const lab = document.createElement('label');
+    if (def.type === 'check') {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!slotDef.opts[def.key];
+      cb.addEventListener('change', () => {
+        slotDef.opts[def.key] = cb.checked;
+        update();
+      });
+      lab.append(cb, ` ${def.label}`);
+      wrap.appendChild(lab);
+      continue;
+    }
     lab.append(`${def.label} `);
     if (def.type === 'choice') {
       const sel = document.createElement('select');
@@ -201,6 +254,7 @@ function renderFeatures() {
   const host = $('features');
   host.innerHTML = '';
   for (const [key, f] of Object.entries(FEATURES)) {
+    if (!bookOn(f.source) && !design.features[key]) continue;
     const label = document.createElement('label');
     label.className = 'acc-row';
     const cb = document.createElement('input');
@@ -212,14 +266,15 @@ function renderFeatures() {
     });
     const span = document.createElement('span');
     const cost = featureCostStr(key, f);
-    span.innerHTML = `<b>${esc(f.name)}</b> <small>TL${f.tl}${cost ? ` · ${cost}` : ''}${f.help ? ` — ${esc(f.help)}` : ''}</small>`;
+    const book = f.source ? ` · ${f.source}` : '';
+    span.innerHTML = `<b>${esc(f.name)}</b> <small>TL${f.tl}${book}${cost ? ` · ${cost}` : ''}${f.help ? ` — ${esc(f.help)}` : ''}</small>`;
     label.append(cb, ' ', span);
     host.appendChild(label);
   }
 }
 
 function featureCostStr(key, f) {
-  const smI = design.sm - 5;
+  const smI = design.sm - 4;
   if (f.cost) {
     const c = f.cost[smI];
     return c == null ? 'n/a at this SM' : fmtCost(c);
@@ -230,8 +285,32 @@ function featureCostStr(key, f) {
     return row ? `${fmtCost(row[1])} (max ${row[0]}G)` : 'n/a at this SM';
   }
   if (f.costPerWorkspace) return `${fmtCost(f.costPerWorkspace)}/workspace`;
+  if (f.costPerTon) return `${fmtCost(f.costPerTon * (HULLS[design.sm]?.tons || 0))} (${fmtCost(f.costPerTon)}/ton)`;
   if (f.costMult) return `armor ×${f.costMult}`;
-  return '';
+  if (f.ramFeature) return '50% of front armor cost';
+  return 'free';
+}
+
+function renderBooks() {
+  const host = $('books');
+  host.innerHTML = '';
+  for (const [key, name] of Object.entries(BOOKS)) {
+    const label = document.createElement('label');
+    label.className = 'acc-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = design.books?.[key] !== false;
+    cb.addEventListener('change', () => {
+      design.books ||= {};
+      design.books[key] = cb.checked;
+      syncBasics();
+      update();
+    });
+    const span = document.createElement('span');
+    span.innerHTML = `<b>${esc(key)}</b> <small>${esc(name)}</small>`;
+    label.append(cb, ' ', span);
+    host.appendChild(label);
+  }
 }
 
 // --- Stat sheet ------------------------------------------------------------
@@ -263,7 +342,7 @@ function update() {
       statRow('LWt.', `${fmt(s.lwt)} tons`),
       statRow('Load', `${fmt(s.load, 1)} tons`),
       statRow('SM', `+${s.sm}`),
-      statRow('Occ', esc(s.occ)),
+      statRow('Occ', esc(s.occ) + (s.hibernation ? ` <small>+${s.hibernation} in hibernation</small>` : '')),
       statRow('dDR', esc(s.ddr)),
       statRow('Range', s.range ?? '—'),
       statRow('Cost', esc(s.costStr)),
@@ -272,6 +351,10 @@ function update() {
     if (s.airSpeed) extra.push(statRow('Top air speed', `${fmt(s.airSpeed)} mph (air Hnd ${s.airHnd >= 0 ? '+' : ''}${s.airHnd})`));
     if (s.deltaV) extra.push(statRow('Delta-V', `${s.deltaV} mps — ${esc(s.fuelNote || '')}`));
     if (s.ppNeeded || s.ppProvided) extra.push(statRow('Power Points', `needs ${s.ppNeeded}, provides ${s.ppProvided}`));
+    if (s.magicPP || s.magicPPNeeded) extra.push(statRow('Magic PP', `needs ${s.magicPPNeeded}, provides ${s.magicPP}`));
+    if (s.psiPP || s.psiPPNeeded) extra.push(statRow('Psi PP', `needs ${s.psiPPNeeded}, provides ${s.psiPP}`));
+    if (s.ground) extra.push(statRow('Ground', `Move ${s.ground.move}, Hnd/SR ${s.ground.hnd >= 0 ? '+' : ''}${s.ground.hnd}/${s.ground.sr} (${s.ground.legs} leg${s.ground.legs > 1 ? 's' : ''})`));
+    if (s.liftNote) extra.push(statRow('Lift', esc(s.liftNote) + (s.aerostatic ? ' — floats in 1G' : '')));
     if (s.screenDDR) extra.push(statRow('dDR', `force screen ${s.screenDDR}`));
     if (s.complexity) extra.push(statRow('Complexity', s.complexity));
     if (s.arrayLevel !== null) extra.push(statRow('Comm/sensor', `Level ${s.arrayLevel}`));
@@ -300,10 +383,13 @@ function update() {
 
 // --- Basics ----------------------------------------------------------------
 function syncBasics() {
-  fillSelect($('f-tl'), [7, 8, 9, 10, 11, 12].map((t) => [String(t), `TL${t}`]), design.tl);
-  fillSelect($('f-sm'), SMS.map((sm) => [String(sm), `SM+${sm} (${fmt(HULLS[sm].tons)} tons)`]), design.sm);
+  fillSelect($('f-tl'), [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((t) => [String(t), `TL${t}`]), design.tl);
+  const sms = SMS.filter((sm) => sm !== 4 || bookOn('SS4') || design.sm === 4);
+  fillSelect($('f-sm'), sms.map((sm) => [String(sm), `SM+${sm} (${fmt(HULLS[sm].tons)} tons)`]), design.sm);
   $('f-name').value = design.name;
   $('f-streamlined').checked = design.streamlined;
+  $('f-quality').value = design.quality || 'normal';
+  renderBooks();
 }
 
 function bindBasics() {
@@ -311,6 +397,7 @@ function bindBasics() {
   $('f-tl').addEventListener('change', () => { design.tl = Number($('f-tl').value); update(); });
   $('f-sm').addEventListener('change', () => { design.sm = Number($('f-sm').value); update(); });
   $('f-streamlined').addEventListener('change', () => { design.streamlined = $('f-streamlined').checked; update(); });
+  $('f-quality').addEventListener('change', () => { design.quality = $('f-quality').value; update(); });
 }
 
 function loadDesign(d) {

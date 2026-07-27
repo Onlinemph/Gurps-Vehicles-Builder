@@ -24,6 +24,8 @@ export const FIELD_HELP = {
   'f-streamlined': 'A streamlined hull is a wedge or needle that can fly fast in '
     + 'atmosphere (air speed √G × 2,500 mph). The price: hull armor protects less '
     + 'per slot, and it needs at least one armor system up front as a heat shield.',
+  'f-quality': 'GURPS Spaceships 2’s used-ship market: cheap hulls cost half but '
+    + 'break down more (HT -2, heavy maintenance); very cheap hulls cost a fifth (HT -4).',
 };
 
 export const STAT_HELP = {
@@ -44,4 +46,8 @@ export const STAT_HELP = {
   'Complexity': 'Rating of the ship’s computer network, from the control room.',
   'Comm/sensor': 'Comm/sensor array level — the ship’s eyes; higher is better at detection and communication.',
   'Workspaces': 'Maintenance stations that must be crewed by technicians on long voyages.',
+  'Magic PP': 'Power Points from magical plants (mana engines, soulburners...). Only magic-powered systems can use them.',
+  'Psi PP': 'Power Points from psychotronic plants fed by living psis. Only psi-powered systems can use them.',
+  'Ground': 'Walking performance from robot legs (SS4 mecha rules): Move in yards/second, and ground Handling/Stability.',
+  'Lift': 'Buoyant or contragravity lift from gasbags or lifting armor — enough lift and the ship floats without thrust.',
 };

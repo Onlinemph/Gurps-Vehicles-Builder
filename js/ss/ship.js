@@ -1,6 +1,8 @@
 // ---------------------------------------------------------------------------
 // GURPS Spaceships — ship assembly. computeShip(design) turns a slot layout
-// into a finished stat block.
+// into a finished stat block. Covers the SS1 core rules plus the designer
+// additions from SS2-SS8 (SM+4 hulls, spinal batteries, robot legs, jets,
+// lift armor, magic/psi Power Points, ship quality, and the new features).
 // ---------------------------------------------------------------------------
 
 import {
@@ -8,6 +10,7 @@ import {
   hndAccelMod, fmtCost as fmtC,
 } from './tables.js';
 import { SYSTEMS } from './systems.js';
+import './systems-books.js';
 
 export { fmtC as fmtShipCost };
 
@@ -18,6 +21,7 @@ export function defaultShip() {
     tl: 10,
     sm: 8,
     streamlined: false,
+    quality: 'normal', // SS2: 'cheap' (×1/2, HT-2) or 'veryCheap' (×1/5, HT-4)
     sections: { front: emptySection(), central: emptySection(), rear: emptySection() },
     cores: [
       { section: 'front', sys: null, opts: {} },
@@ -48,9 +52,13 @@ export function computeShip(design) {
   const d = design;
   const hull = HULLS[d.sm];
   if (!hull) {
-    return { ok: false, errors: [`SM +${d.sm} is outside the SM+5..+15 hull table.`], warnings, stats: null };
+    return { ok: false, errors: [`SM +${d.sm} is outside the SM+4..+15 hull table.`], warnings, stats: null };
   }
-  const ctx = { streamlined: d.streamlined };
+  const smI = d.sm - 4;
+  const ctx = {
+    streamlined: d.streamlined,
+    compTL: d.tl + (d.features?.advancedComputers ? 1 : 0),
+  };
 
   // Collect all placed systems: {section, slotLabel, isCore, entry, opts, info, cost}
   const placed = [];
@@ -76,46 +84,76 @@ export function computeShip(design) {
 
   function build(entry, opts, section, slotLabel, isCore) {
     const info = entry.info(d.sm, d.tl, opts, ctx) || {};
-    return { entry, opts, section, slotLabel, isCore, info, cost: entry.cost(d.sm, d.tl, opts) || 0 };
+    let cost = entry.cost(d.sm, d.tl, opts) || 0;
+    // SS7: magic-/psi-powered high-energy systems are half price and draw
+    // from the matching Power Point pool.
+    let ppPool = 'normal';
+    if (entry.he > 0 && (opts?.powered === 'magic' || opts?.powered === 'psi')) {
+      cost *= 0.5;
+      ppPool = opts.powered;
+    }
+    return { entry, opts: opts || {}, section, slotLabel, isCore, info, cost, ppPool };
   }
 
   // --- Validation ----------------------------------------------------------
   for (const p of placed) {
     const e = p.entry;
-    if (typeof e.tl === 'number' && d.tl < e.tl) errors.push(`${e.name} requires TL ${e.tl}+.`);
+    if (typeof e.tl === 'number' && e.tl > 0 && d.tl < e.tl) errors.push(`${e.name} requires TL ${e.tl}+.`);
     if (e.minSM && d.sm < e.minSM) errors.push(`${e.name} requires SM +${e.minSM} or larger.`);
     if (e.maxSM && d.sm > e.maxSM) errors.push(`${e.name} is only available up to SM +${e.maxSM}.`);
     if (p.isCore && e.core === false) errors.push(`${e.name} cannot be a core system.`);
+    if (e.coreOnly && !p.isCore) errors.push(`${e.name} must occupy a [core] slot.`);
     if (!p.isCore && e.loc === 'rear' && p.section !== 'rear') errors.push(`${e.name} must go in the rear hull.`);
     if (!p.isCore && e.loc === 'front' && p.section !== 'front') errors.push(`${e.name} must go in the front hull.`);
+    if (!p.isCore && e.loc === 'central' && p.section !== 'central') errors.push(`${e.name} must go in the central hull.`);
     if (p.info.invalid) errors.push(`${e.name}: ${p.info.desc}.`);
+  }
+
+  // Spinal batteries come in three linked parts.
+  const spinalFront = placed.some((p) => p.info.spinalFront);
+  const spinalCentral = placed.some((p) => p.info.spinalCentral && p.isCore);
+  const spinalRear = placed.some((p) => p.info.spinalRear);
+  if ((spinalFront || spinalCentral || spinalRear) && !(spinalFront && spinalCentral && spinalRear)) {
+    errors.push('A spinal battery needs all three parts: front weapon, central [core] section, and rear section.');
   }
 
   // --- Accumulate ----------------------------------------------------------
   const acc = {
     armor: { front: 0, central: 0, rear: 0 },
-    ppProvided: 0, ppNeeded: 0,
+    armorCost: { front: 0, central: 0, rear: 0 },
+    pp: { normal: 0, magic: 0, psi: 0 },
+    ppNeed: { normal: 0, magic: 0, psi: 0 },
     cargo: 0, hangar: 0, spareCargo: 0, fuelTanks: 0,
-    cabins: 0, sleeps: 0, seats: 0, controlStations: 0, turrets: 0, ws: 0,
+    cabins: 0, sleeps: 0, hibernation: 0, seats: 0, controlStations: 0, turrets: 0, ws: 0,
     ftl: 0, ecm: 0, screenDDR: 0,
     contragrav: false, engineRoom: false, factory: false,
     complexity: null, arrayLevel: null,
     reactionless: [], reaction: [], sails: [],
+    jetG: 0, jetCaps: [], rotors: 0, airHndBonus: 0,
+    liftG: 0, liftTons: 0, legs: 0, arms: 0,
+    solarMirrors: 0, mirrorUsers: 0,
   };
   let systemsCost = 0;
+  const armorFree = d.features.advancedArmor; // SS3: hardening is free
+  const armorMult = d.features.hardenedArmor && !armorFree ? 2 : 1;
 
   for (const p of placed) {
     const i = p.info;
-    systemsCost += p.cost * (d.features.hardenedArmor && p.entry.category === 'Armor' ? 2 : 1);
+    const isArmor = p.entry.category === 'Armor';
+    const cost = p.cost * (isArmor ? armorMult : 1);
+    systemsCost += cost;
+    if (isArmor) acc.armorCost[p.section] += cost;
     if (i.armorDDR) acc.armor[p.section] += i.armorDDR;
-    if (i.pp) acc.ppProvided += i.pp;
-    if (i.ppNeed) acc.ppNeeded += i.ppNeed;
+    if (i.pp) acc.pp[i.ppKind === 'magic' ? 'magic' : i.ppKind === 'psi' ? 'psi' : 'normal'] += i.pp;
+    if (i.ppMagic) acc.pp.magic += i.ppMagic;
+    if (i.ppNeed && !i.ppShared) acc.ppNeed[p.ppPool] += i.ppNeed;
     if (i.cargoTons) acc.cargo += i.cargoTons;
     if (i.hangarTons) acc.hangar += i.hangarTons;
     if (i.spareCargo) acc.spareCargo += i.spareCargo;
     if (i.fuelTank) acc.fuelTanks += 1;
     if (i.cabins) acc.cabins += i.cabins;
     if (i.sleeps) acc.sleeps += i.sleeps;
+    if (i.hibernation) acc.hibernation += i.hibernation;
     if (i.seats) acc.seats += i.seats;
     if (i.controlStations) acc.controlStations += i.controlStations;
     if (i.turrets) acc.turrets += i.turrets;
@@ -125,24 +163,35 @@ export function computeShip(design) {
     if (i.screenDDR) acc.screenDDR = Math.max(acc.screenDDR, i.screenDDR);
     if (i.contragrav) acc.contragrav = true;
     if (p.entry.key === 'engineRoom') acc.engineRoom = true;
-    if (p.entry.key === 'factory') acc.factory = true;
+    if (i.factory) acc.factory = true;
     if (i.complexity) acc.complexity = Math.max(acc.complexity ?? 0, i.complexity);
     if (i.arrayLevel) acc.arrayLevel = Math.max(acc.arrayLevel ?? -99, i.arrayLevel);
-    if (i.engine) {
-      (i.reactionless ? acc.reactionless : acc.reaction).push(p);
-    }
+    if (i.engine) (i.reactionless ? acc.reactionless : acc.reaction).push(p);
     if (i.sail) acc.sails.push(p);
+    if (i.jetG) { acc.jetG += i.jetG; if (i.airCap) acc.jetCaps.push(i.airCap); }
+    if (p.entry.key === 'turbofan') acc.jetCaps.push(2000);
+    if (i.rotor) acc.rotors += 1;
+    if (i.airHndBonus) acc.airHndBonus += i.airHndBonus;
+    if (i.liftG) acc.liftG += i.liftG;
+    if (i.liftTons) acc.liftTons += i.liftTons;
+    if (i.legs) acc.legs += i.legs;
+    if (i.arms) acc.arms += i.arms;
+    if (i.solarMirror) acc.solarMirrors += 1;
+    if (p.entry.key === 'solarBoiler' || p.entry.key === 'solarThermal') acc.mirrorUsers += 1;
   }
+  if (acc.legs > 0) acc.ppNeed.normal += 1; // one PP runs all robot legs
 
   // Streamlining requires at least one front/central armor system.
   if (d.streamlined && acc.armor.front === 0 && acc.armor.central === 0) {
     warnings.push('A streamlined hull needs at least one armor system on the front or central hull.');
   }
   if (acc.ecm > 3) warnings.push('Only three defensive ECM systems have any effect.');
+  if (acc.mirrorUsers > acc.solarMirrors) {
+    warnings.push('Each solar boiler or solar thermal rocket needs its own solar mirror system.');
+  }
 
   // --- Features ------------------------------------------------------------
   let featureCost = 0;
-  const smI = d.sm - 5;
   for (const [key, on] of Object.entries(d.features)) {
     if (!on) continue;
     const f = FEATURES[key];
@@ -151,12 +200,16 @@ export function computeShip(design) {
     if (f.unstreamlinedOnly && d.streamlined) errors.push(`${f.name} requires an unstreamlined hull.`);
     if (f.maxSM && d.sm > f.maxSM) errors.push(`${f.name} is limited to SM +${f.maxSM}.`);
     if (f.minSM && d.sm < f.minSM) errors.push(`${f.name} requires SM +${f.minSM}+.`);
-    if (f.cost) featureCost += f.cost[smI] ?? 0;
+    if (f.cost) {
+      const c = f.cost[smI];
+      if (c == null) errors.push(`${f.name} is not available at SM +${d.sm}.`);
+      else featureCost += c;
+    }
     if (f.flatCost) featureCost += f.flatCost;
     if (f.table) featureCost += (f.table[d.sm] || [0, 0])[1];
-    if (f.costPerWorkspace) {
-      featureCost += f.costPerWorkspace * acc.ws;
-    }
+    if (f.costPerWorkspace) featureCost += f.costPerWorkspace * acc.ws;
+    if (f.costPerTon) featureCost += f.costPerTon * hull.tons;
+    if (f.ramFeature) featureCost += 0.5 * acc.armorCost.front;
   }
   let workspaces = acc.ws;
   if (d.features.totalAutomation) workspaces = 0;
@@ -203,6 +256,9 @@ export function computeShip(design) {
   if (d.sm <= 9 && !acc.engineRoom) ht -= 1;
   if ((d.features.totalAutomation || d.features.highAutomation) && d.tl <= 9) ht -= 1;
   if (acc.factory) ht += 1;
+  if (d.features.lacksAutomation) ht += 1;
+  if (d.quality === 'cheap') ht -= 2;
+  if (d.quality === 'veryCheap') ht -= 4;
 
   // Occupancy.
   const crewOcc = acc.controlStations + acc.turrets + workspaces;
@@ -210,6 +266,7 @@ export function computeShip(design) {
   let occ = '0';
   if (longTerm > 0 && acc.seats === 0) occ = `${longTerm}ASV`;
   else if (longTerm > 0) occ = `${longTerm}ASV+${acc.seats}SV`;
+  else if (crewOcc > 0 && acc.seats === 0) occ = `${crewOcc}SV`;
   else if (crewOcc + acc.seats > 0) occ = `${crewOcc}+${acc.seats}SV`;
   const occupants = longTerm > 0 ? longTerm : crewOcc + acc.seats;
 
@@ -222,16 +279,45 @@ export function computeShip(design) {
   const ddr = [acc.armor.front, acc.armor.central, acc.armor.rear];
   const ddrStr = ddr.every((v) => v === ddr[0]) ? String(ddr[0]) : ddr.join('/');
 
-  // Air performance.
-  const canFly = d.features.winged || acc.contragrav || bestG > 1;
-  const air = canFly && hasDrive ? airSpeed(bestG, d.streamlined) : null;
+  // Air performance. Jets, rotors, lift armor and gasbags can all fly a ship
+  // that lacks the thrust to lift itself.
+  const gFly = d.features.winged || acc.contragrav || bestG > 1;
+  const candidates = [];
+  if (gFly && hasDrive) candidates.push(airSpeed(bestG, d.streamlined));
+  if (acc.jetG > 0) {
+    let jetSpeed = airSpeed(acc.jetG, d.streamlined);
+    for (const cap of acc.jetCaps) jetSpeed = Math.min(jetSpeed, cap);
+    candidates.push(jetSpeed);
+  }
+  if (acc.rotors > 0) candidates.push(d.streamlined ? (acc.rotors >= 2 ? 250 : 200) : (acc.rotors >= 2 ? 100 : 80));
+  let air = candidates.length ? Math.max(...candidates) : null;
+  if (air !== null && d.features.nauticalLines) air = Math.round(air * 0.2 / 10) * 10;
   let airHnd = null;
   if (air !== null && hnd !== null) {
-    airHnd = hnd + (acc.contragrav ? 2 : 0) + (d.features.winged ? 4 : 0);
+    airHnd = hnd + (acc.contragrav ? 2 : 0) + (d.features.winged ? 4 : 0) + acc.airHndBonus;
     airHnd = Math.min(airHnd, 5);
   }
+  const aerostatic = acc.liftG >= 1 || acc.liftTons > hull.tons;
+  const liftNote = acc.liftG > 0
+    ? `lifting armor: ${r2(acc.liftG)}G of lift`
+    : acc.liftTons > 0 ? `gasbags: ${acc.liftTons.toLocaleString('en-US')} tons of lift (hull ${hull.tons.toLocaleString('en-US')} t)` : null;
 
-  const totalCost = systemsCost + featureCost;
+  // Ground performance for walkers (SS4 robot legs).
+  let ground = null;
+  if (acc.legs > 0) {
+    if (d.sm > 7) warnings.push('Robot legs are only practical on SM +4 to +7 spacecraft.');
+    const top = acc.legs >= 3 ? 5 * acc.legs : acc.legs === 2 ? 10 : 5;
+    const accel = acc.legs >= 2 ? 10 : 5;
+    let gHnd = (8 - Math.min(d.sm, 7)) - (acc.legs >= 3 ? 1 : 0);
+    if (d.streamlined || d.features.winged) gHnd -= 1;
+    let gSr = acc.legs >= 4 ? 5 : acc.legs === 3 ? 4 : acc.legs === 2 ? 3 : 1;
+    if (d.streamlined && d.features.winged) gSr -= 1;
+    ground = { move: `${accel}/${top}`, hnd: gHnd, sr: gSr, legs: acc.legs };
+  }
+
+  let totalCost = systemsCost + featureCost;
+  if (d.quality === 'cheap') totalCost *= 0.5;
+  else if (d.quality === 'veryCheap') totalCost *= 0.2;
   const slotsUsed = placed.length;
 
   return {
@@ -241,12 +327,16 @@ export function computeShip(design) {
       dstHp: hull.dstHp, hnd, sr, ht,
       move, accelG: r2(bestG), deltaV, fuelNote,
       lwt: hull.tons, load, sm: d.sm, occ, occupants,
+      hibernation: acc.hibernation || null,
       ddr: ddrStr, screenDDR: acc.screenDDR || null,
       range: acc.ftl > 0 ? `FTL-${acc.ftl}` : null,
       cost: totalCost, costStr: fmtC(totalCost),
       airSpeed: air, airHnd,
+      ground, liftNote, aerostatic,
       complexity: acc.complexity, arrayLevel: acc.arrayLevel,
-      ppProvided: acc.ppProvided, ppNeeded: acc.ppNeeded,
+      ppProvided: acc.pp.normal, ppNeeded: acc.ppNeed.normal,
+      magicPP: acc.pp.magic, magicPPNeeded: acc.ppNeed.magic,
+      psiPP: acc.pp.psi, psiPPNeeded: acc.ppNeed.psi,
       workspaces, crewOcc, cabins: acc.cabins, seats: acc.seats,
       cargo: r2(acc.cargo + acc.hangar + acc.spareCargo),
       spareCargo: r2(acc.spareCargo),

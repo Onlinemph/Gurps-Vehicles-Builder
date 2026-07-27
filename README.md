@@ -54,6 +54,22 @@ Three designers are included:
   against both of the book's published designs — the Star Flower-class tramp
   freighter and the Midnight Sun orbital shuttle (see `tests/ss.test.mjs`).
 
+  **The whole Spaceships line (SS2-SS8) is included**, with a per-book filter
+  in the designer: SS2's de-rated reactors and used-ship quality levels;
+  SS3's survivability switches and spinal batteries; SS4's SM+4 small craft
+  (with the 10%-of-SM+6 cost rule), robot legs and mecha ground performance;
+  SS5's growth tanks and hibernation options; SS6's modular-system switch;
+  SS7's full divergent/paranormal catalog (wooden, etherwood, adamant,
+  skystone, iron, orichalcum and structural-field armor, ether oars/screws/
+  sails, gasbags, helicopter rotors, ornithopter wings, solar boilers and
+  mirrors, mana engines, soulburners, orgone and psychotronic plants with
+  separate magic/psi Power-Point pools, sapient brains, maws, tails,
+  digestive systems, exophase fields, lightspeed and parachronic drives...);
+  and SS8's laser rockets, fission air-rams, bioship self-repair, and the
+  advanced-computers switch. Validated against published designs from the
+  supplements — the SS4 Typhoon (SM+4) and SS7 Ether Ironclad compute to
+  their printed costs exactly (see `tests/ss-books.test.mjs`).
+
 The two vehicle designers can also pull real components from the official
 **GURPS Vehicle Builder** program's data files via the GVB Library (see below).
 

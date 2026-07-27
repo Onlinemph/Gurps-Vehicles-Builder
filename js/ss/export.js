@@ -42,6 +42,11 @@ export function toSsMarkdown(design) {
   if (s.airSpeed) notes.push(`Top air speed ${fmt(s.airSpeed)} mph (air Hnd ${s.airHnd >= 0 ? '+' : ''}${s.airHnd}).`);
   if (s.deltaV) notes.push(`Delta-V ${s.deltaV} mps (${s.fuelNote}).`);
   if (s.ppNeeded) notes.push(`Power Points: needs ${s.ppNeeded}, provides ${s.ppProvided}.`);
+  if (s.magicPP || s.magicPPNeeded) notes.push(`Magic Power Points: needs ${s.magicPPNeeded}, provides ${s.magicPP}.`);
+  if (s.psiPP || s.psiPPNeeded) notes.push(`Psi Power Points: needs ${s.psiPPNeeded}, provides ${s.psiPP}.`);
+  if (s.ground) notes.push(`Ground Move ${s.ground.move}, Hnd/SR ${s.ground.hnd >= 0 ? '+' : ''}${s.ground.hnd}/${s.ground.sr} on ${s.ground.legs} leg(s).`);
+  if (s.liftNote) notes.push(`${s.liftNote}${s.aerostatic ? ' — floats in 1G.' : '.'}`);
+  if (s.hibernation) notes.push(`${s.hibernation} hibernation chamber(s).`);
   if (s.screenDDR) notes.push(`Force screen dDR ${s.screenDDR}.`);
   if (s.complexity) notes.push(`Complexity ${s.complexity} computer network; comm/sensor ${s.arrayLevel}.`);
   if (s.workspaces) notes.push(`${s.workspaces} workspace${s.workspaces > 1 ? 's' : ''}.`);
