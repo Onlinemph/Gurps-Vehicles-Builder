@@ -16,6 +16,7 @@ export const SMS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 export const smIndex = (sm) => sm - 4;
 
 // Source books for filtering. SS1 is the core set and always available.
+// PW is Mailanka's fan-made Psi-Wars setting (space-opera house rules).
 export const BOOKS = {
   SS2: 'SS2: Traders, Liners & Transports',
   SS3: 'SS3: Warships & Space Pirates',
@@ -24,6 +25,7 @@ export const BOOKS = {
   SS6: 'SS6: Mining & Industrial',
   SS7: 'SS7: Divergent & Paranormal Tech',
   SS8: 'SS8: Transhuman Spacecraft',
+  PW: 'Psi-Wars (Mailanka, fan)',
 };
 
 // Hull Size Table (SS1; SM+4 row from SS4).

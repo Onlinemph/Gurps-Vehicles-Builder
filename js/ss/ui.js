@@ -9,6 +9,7 @@ import './systems-books.js';
 import { computeShip, defaultShip } from './ship.js';
 import { toSsMarkdown } from './export.js';
 import { SS_PRESETS } from './presets.js';
+import { PSIWARS_PRESETS } from './presets-psiwars.js';
 import { initExplain, refreshExplain } from '../help-core.js';
 import { FIELD_HELP, SECTION_HELP, STAT_HELP } from './help.js';
 
@@ -480,11 +481,12 @@ function refreshSavedSelect() {
 }
 
 function initToolbar() {
-  fillSelect($('preset-select'), [['', '— Load a sample design —'], ...SS_PRESETS.map((p, i) => [String(i), p.name])], '');
+  const presets = [...SS_PRESETS, ...PSIWARS_PRESETS];
+  fillSelect($('preset-select'), [['', '— Load a sample design —'], ...presets.map((p, i) => [String(i), p.name])], '');
   $('preset-select').addEventListener('change', (e) => {
     const i = e.target.value;
     if (i === '') return;
-    loadDesign(SS_PRESETS[Number(i)].design);
+    loadDesign(presets[Number(i)].design);
     flash(`Loaded “${design.name}”.`);
     e.target.value = '';
   });

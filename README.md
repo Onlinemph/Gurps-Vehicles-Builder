@@ -109,6 +109,26 @@ Three designers are included:
   same clickable damage diagrams, and battles save/load
   (see `tests/ss-tactical.test.mjs`).
 
+**Psi-Wars mode** (fan setting): the Spaceships designer, combat tracker, and
+tactical map all ship with content for [Mailanka's Psi-Wars](https://mailanka.blogspot.com/)
+(Iteration 5) — a fan-made GURPS space-opera setting. Seven catalog starships
+(Typhoon interceptors, the Starhawk Nova, Wyvern Zero, Tiger Manticore,
+Renegade Marauder, Dark-Horse Racer) are presets tagged `PW:`, the setting's
+house-ruled 25G super reactionless engine is in the catalog under a "Psi-Wars"
+book filter, and the combat tracker has a **Psi-Wars simplified ruleset**
+toggle implementing its cinematic combat layer: four ship size categories
+(Fighter/Corvette/Capital/Dreadnought, +3 to hit per category), three range
+bands (Neutral/Engaged/Hugging), Damage Reduction 2 for corvettes and up,
+armor-gap called shots (ignore armor, disable at half thresholds, excess
+damage lost), a fixed missile/torpedo damage table, crew-quality presets, and
+mook fighter **squadrons** that pool damage and lose fighters instead of
+tracking systems (see `tests/ss-psiwars.test.mjs`; the Tiger Manticore
+computes to its published $746.6M exactly). Psi-Wars is a fan creation by
+Mailanka; no setting text is reproduced — mechanics only.
+
+Every page has an **Explain mode** (on by default): plain-English notes under
+each control and section describing what the choice means at the table.
+
 The two vehicle designers can also pull real components from the official
 **GURPS Vehicle Builder** program's data files via the GVB Library (see below).
 

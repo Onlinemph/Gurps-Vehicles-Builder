@@ -328,7 +328,7 @@ export function effectiveStats(c) {
 // --- Damage pipeline ------------------------------------------------------------
 // Resolve one hit: basic damage → screen → armor → penetration → hull damage.
 // Returns a log (array of strings) and mutates the combatant.
-export function applyHit(c, { section, basicDamage, div = 1, halfDamage = false, rng = Math.random, precisionSlot = null, weakPoint = false }) {
+export function applyHit(c, { section, basicDamage, div = 1, halfDamage = false, rng = Math.random, precisionSlot = null, weakPoint = false, armorGap = false, damageReduction = 1 }) {
   const log = [];
   let dmg = basicDamage;
   if (halfDamage) { dmg = Math.floor(dmg / 2); log.push(`half-damage range: basic damage ${dmg}`); }
@@ -361,15 +361,25 @@ export function applyHit(c, { section, basicDamage, div = 1, halfDamage = false,
     armorDDR += ddr;
   }
   if (weakPoint) { armorDDR = 0; log.push('weak point targeted: armor ignored'); }
+  if (armorGap) { armorDDR = 0; log.push('armor gap targeted: armor ignored'); }
   const effArmor = div === Infinity ? 0 : Math.floor(armorDDR / div);
-  const pen = Math.max(0, dmg - effArmor);
+  let pen = Math.max(0, dmg - effArmor);
   log.push(`armor dDR ${armorDDR}${div !== 1 ? ` ÷ (${div === Infinity ? '∞' : div}) = ${effArmor}` : ''} — penetrating damage ${pen}`);
+  if (pen > 0 && damageReduction > 1) {
+    pen = Math.floor(pen / damageReduction);
+    log.push(`Damage Reduction ${damageReduction} (Psi-Wars): penetrating damage halved to ${pen}`);
+  }
+  if (pen > 0 && armorGap) {
+    // Psi-Wars armor gaps: damage past what destroys the system is lost.
+    const cap = Math.ceil(c.dhp * 0.25);
+    if (pen > cap) { pen = cap; log.push(`armor gap: excess damage lost — capped at ${cap}`); }
+  }
   if (pen <= 0) { log.push('no penetration.'); return { log, penetrating: 0 }; }
 
-  // 4. Hull damage.
+  // 4. Hull damage. Psi-Wars armor gaps disable at half the usual thresholds.
   c.curDhp -= pen;
   log.push(`dHP ${c.curDhp + pen} → ${c.curDhp}`);
-  const pct = pen / c.dhp;
+  const pct = (pen / c.dhp) * (armorGap ? 2 : 1);
   if (pct >= 0.5) {
     log.push(...damageSystem(c, section, slotIdx, 'destroy', rng));
     const extra = d6(rng) - 1;
@@ -447,4 +457,88 @@ export function combatantWeapons(c) {
     });
   }
   return out;
+}
+
+// --- Psi-Wars simplified space-opera combat (Mailanka, Iteration 5) -----------
+// A cinematic house-rule layer over the basic system: four ship size
+// categories, three range bands, Damage Reduction 2 for corvettes and up,
+// armor gaps, and a fixed missile/torpedo table.
+
+export const PSI_CATEGORIES = ['Fighter', 'Corvette', 'Capital', 'Dreadnought'];
+export function psiCategory(sm) {
+  if (sm <= 6) return 0;
+  if (sm <= 9) return 1;
+  if (sm <= 12) return 2;
+  return 3;
+}
+
+// Psi-Wars ranges: Neutral (Short), Engaged (Close), Hugging (Point-blank).
+export const PSI_RANGES = {
+  neutral: { name: 'Neutral', mod: -8 },
+  engaged: { name: 'Engaged', mod: -4 },
+  hugging: { name: 'Hugging', mod: 0 },
+};
+
+// Attack modifiers for beams under the Psi-Wars layer.
+export function psiBeamMods(p) {
+  const mods = [];
+  const add = (v, label) => { if (v) mods.push([v, label]); };
+  const tCat = psiCategory(p.targetSM);
+  const aCat = psiCategory(p.attackerSM);
+  add(3 * tCat, `target is ${PSI_CATEGORIES[tCat]} (+3/category)`);
+  // Big weapons struggle to track smaller ships.
+  if (tCat < aCat) {
+    const per = p.heavyWeapon ? 2 : 1;
+    add(-per * (aCat - tCat), `${p.heavyWeapon ? 'heavy' : 'light'} weapon vs smaller ship`);
+  }
+  add(p.sAcc, `sAcc ${p.sAcc}`);
+  add(PSI_RANGES[p.range]?.mod ?? -8, `${PSI_RANGES[p.range]?.name ?? 'Neutral'} range`);
+  // ECM: +2 for a targeting array, reduced by 1 per defensive ECM (min 0).
+  if (p.tacticalArray) add(Math.max(0, 2 - (p.ecm || 0)), 'targeting array vs ECM');
+  else if (p.ecm) add(0, '');
+  if (p.fixedMount) add(2, 'spinal/fixed mount');
+  if (p.streamlinedEnd) add(-1, 'streamlined front/rear hull');
+  if (p.precision) add(-5, 'precision attack');
+  if (p.armorGap) add(-10, 'armor gap');
+  if (p.weakPoint) add(-10, 'armor weak point');
+  if (p.attackerZeroHP) add(-2, 'attacker at 0 dHP');
+  if (p.shots >= 2) add(rapidFireBonus(p.shots), `${p.shots} shots`);
+  return mods;
+}
+
+// Fixed Psi-Wars missile/torpedo table (damage does not scale with velocity).
+export const PSI_MISSILES = {
+  lightMissile: { name: 'Light missile (20cm)', dice: '6d', div: 10, pd: -7, cost: 125e3, torpedo: false },
+  lightTorpedo: { name: 'Light torpedo (20cm)', dice: '6d×20', div: 1, pd: -4, cost: 200e3, torpedo: true },
+  mediumMissile: { name: 'Medium missile (40cm)', dice: '6d×2', div: 10, pd: -5, cost: 2e6, torpedo: false },
+  mediumTorpedo: { name: 'Medium torpedo (40cm)', dice: '6d×40', div: 1, pd: -2, cost: 3e6, torpedo: true },
+  heavyMissile: { name: 'Heavy missile (80cm)', dice: '6d×4', div: 10, pd: -3, cost: 30e6, torpedo: false },
+  heavyTorpedo: { name: 'Heavy torpedo (80cm)', dice: '6d×80', div: 1, pd: 0, cost: 40e6, torpedo: true },
+};
+
+export function psiMissileMods(p) {
+  const mods = [];
+  const add = (v, label) => { if (v) mods.push([v, label]); };
+  const diff = psiCategory(p.targetSM) - psiCategory(p.attackerSM);
+  add(3 * diff, `size difference (${diff >= 0 ? '+' : ''}${diff} categories)`);
+  if (!p.torpedo) add(1, 'missile accuracy');
+  add(-2 * (p.ecm || 0), `defensive ECM ×${p.ecm || 0}`);
+  if (p.tacticalArray) add(2, 'tactical array');
+  if (p.streamlinedEnd) add(-1, 'streamlined front/rear hull');
+  if (p.precision) add(-5, 'precision attack');
+  if (p.weakPoint) add(-10, 'armor weak point');
+  if (p.shots >= 2) add(rapidFireBonus(p.shots), `${p.shots} shots`);
+  return mods;
+}
+
+// Squadron damage (mook fighter wings): sum penetrating damage in a pool;
+// every 50% of one fighter's dHP destroys a fighter, at most one per hit.
+export function squadronDamage(sq, dhp, penetrating) {
+  sq.pool = (sq.pool || 0) + penetrating;
+  const perFighter = Math.max(1, Math.ceil(dhp * 0.5));
+  const totalLost = Math.floor(sq.pool / perFighter);
+  const newlyLost = Math.min(1, Math.max(0, totalLost - (sq.lost || 0)));
+  sq.lost = (sq.lost || 0) + newlyLost;
+  sq.size = Math.max(0, sq.size - newlyLost);
+  return newlyLost;
 }

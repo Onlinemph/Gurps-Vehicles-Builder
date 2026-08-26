@@ -6,15 +6,21 @@
 import { SECTIONS } from './tables.js';
 import { computeShip } from './ship.js';
 import { SS_PRESETS } from './presets.js';
+import { PSIWARS_PRESETS } from './presets-psiwars.js';
 import {
   BASE_VELOCITY, BEAM_TYPES, GUN_TYPES, NUKES,
+  PSI_CATEGORIES, PSI_MISSILES, PSI_RANGES,
   RANGE_LABELS, ROF, SCALES, SCALE_LABELS, SITUATIONS,
   TURN_LABELS, TURN_LENGTHS,
   applyHit, ballisticAttackMods, beamAttackMods, beamRangeCheck, beamStats,
   combatantWeapons, conventionalWarhead, createCombatant, dodgeScore,
-  effectiveStats, fmtDice, missileSAcc, parseDice, rangeBand,
-  rollDice, successRoll,
+  effectiveStats, fmtDice, missileSAcc, parseDice, psiBeamMods, psiCategory,
+  psiMissileMods, rangeBand, rollDice, squadronDamage, successRoll,
 } from './combat.js';
+import { initExplain, refreshExplain } from '../help-core.js';
+import { COMBAT_FIELD_HELP, COMBAT_SECTION_HELP } from './help-combat.js';
+
+const ALL_PRESETS = [...SS_PRESETS.filter((p) => !p.name.startsWith('Empty')), ...PSIWARS_PRESETS];
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -23,8 +29,10 @@ const fmt = (x, d = 0) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString('en
 const enc = {
   scale: 'standard',
   turn: '3m',
+  ruleset: 'standard', // 'standard' (SS1) or 'psiwars' (Mailanka's layer)
   combatants: [],
 };
+const psi = () => enc.ruleset === 'psiwars';
 let attack = null; // pending attack state
 
 // --- Fleet management --------------------------------------------------------
@@ -89,6 +97,22 @@ function renderFleet() {
           </span>
         </label>
       </div>
+      ${psi() ? `
+      <div class="grid3" style="margin-top:6px">
+        <label>Crew quality
+          <span class="skill-pair">
+            <button class="btn" data-crew="${ci}:10" title="Green crews: skill 10, half cost">G</button>
+            <button class="btn" data-crew="${ci}:12" title="Basic crews: skill 12, standard">B</button>
+            <button class="btn" data-crew="${ci}:15" title="Superior training: skill 15, double cost">S</button>
+            <button class="btn" data-crew="${ci}:18" title="Elite: skill 18, five times cost">E</button>
+          </span>
+        </label>
+        <label>Squadron (${PSI_CATEGORIES[psiCategory(c.design.sm)]})
+          <input type="number" data-squad="${ci}" value="${c.squadron?.size || 1}" min="1" max="40"
+            title="Mook fighter wings act as one body: 1 = a single ship; 5 = a wing; 20 = a squadron">
+        </label>
+        <label>&nbsp;<small class="muted">${c.squadron?.size > 1 ? `${c.squadron.size} fighters — damage pools; every ${Math.ceil(c.dhp / 2)} penetration downs one` : `${PSI_CATEGORIES[psiCategory(c.design.sm)]}: ${psiCategory(c.design.sm) >= 1 ? 'halves all penetrating damage (DR 2)' : 'full damage; goes first in the round'}`}</small></label>
+      </div>` : ''}
       <div class="dmg-grid">${SECTIONS.map((sec) => dmgRow(c, ci, sec)).join('')}</div>
       <p class="muted dmg-hint">Click a system to cycle OK → disabled → destroyed. ⚠ = volatile.</p>
     `;
@@ -121,6 +145,20 @@ function renderFleet() {
   }));
   host.querySelectorAll('[data-gunner]').forEach((el) => el.addEventListener('change', () => {
     enc.combatants[Number(el.dataset.gunner)].gunnerSkill = Number(el.value) || 10;
+  }));
+  host.querySelectorAll('[data-crew]').forEach((b) => b.addEventListener('click', () => {
+    const [ci, skill] = b.dataset.crew.split(':').map(Number);
+    const c = enc.combatants[ci];
+    c.pilotSkill = skill;
+    c.gunnerSkill = skill;
+    log(`${c.id} crew set to skill ${skill}.`);
+    renderFleet();
+  }));
+  host.querySelectorAll('[data-squad]').forEach((el) => el.addEventListener('change', () => {
+    const c = enc.combatants[Number(el.dataset.squad)];
+    const n = Math.max(1, Math.floor(Number(el.value) || 1));
+    c.squadron = n > 1 ? { size: n, pool: 0, lost: 0 } : null;
+    renderFleet();
   }));
   host.querySelectorAll('[data-slot]').forEach((el) => el.addEventListener('click', () => {
     const [ci, sec, i] = el.dataset.slot.split(':');
@@ -157,7 +195,11 @@ function renderAttackSelectors() {
   const names = enc.combatants.map((c, i) => [String(i), c.id]);
   fillSelect($('atk-ship'), names.length ? names : [['', '— add ships —']], $('atk-ship').value);
   fillSelect($('atk-target'), names.length ? names : [['', '— add ships —']], $('atk-target').value);
-  fillSelect($('atk-situation'), Object.entries(SITUATIONS).map(([k, v]) => [k, `${v.name} (${RANGE_LABELS[rangeBand(k, enc.scale)]})`]), $('atk-situation').value || 'engaged');
+  if (psi()) {
+    fillSelect($('atk-situation'), Object.entries(PSI_RANGES).map(([k, v]) => [k, `${v.name} (${v.mod})`]), ['neutral', 'engaged', 'hugging'].includes($('atk-situation').value) ? $('atk-situation').value : 'neutral');
+  } else {
+    fillSelect($('atk-situation'), Object.entries(SITUATIONS).map(([k, v]) => [k, `${v.name} (${RANGE_LABELS[rangeBand(k, enc.scale)]})`]), SITUATIONS[$('atk-situation').value] ? $('atk-situation').value : 'engaged');
+  }
   renderWeaponSelect();
 }
 
@@ -209,13 +251,18 @@ function renderWeaponParams() {
   } else if (kind === 'gun') {
     mk('Gun type', sel('w-guntype', Object.entries(GUN_TYPES).map(([k, v]) => [k, v.name]), 'conventional'));
     mk('Warhead', sel('w-warhead', [['conventional', 'Conventional'], ...Object.entries(NUKES).map(([k, v]) => [k, v.name])], 'conventional'));
+  } else if (psi()) {
+    // Psi-Wars uses a fixed missile/torpedo table instead of caliber math.
+    mk('Munition (Psi-Wars)', sel('w-psimissile', Object.entries(PSI_MISSILES).map(([k, v]) => [k, `${v.name} — ${v.dice}${v.div !== 1 ? `(${v.div})` : ''}, PD ${v.pd}`]), 'lightMissile'));
   } else {
     mk('Warhead', sel('w-warhead', [['conventional', 'Conventional'], ...Object.entries(NUKES).map(([k, v]) => [k, v.name])], 'conventional'));
   }
   mk('Fire mode', sel('w-mode', [['single', 'Standard'], ['rapid', 'Rapid fire'], ['veryRapid', 'Very rapid fire']], 'single'));
   const rof = ROF.single[enc.turn] * (w.info.turrets ? 1 : w.weapons);
-  mk(`Shots (RoF ${rof}/wpn base)`, num('w-shots', Math.min(rof, 10), 1));
-  if (kind !== 'beam') {
+  const a = attacker();
+  const sq = a?.squadron?.size > 1 ? ` × ${a.squadron.size} fighters` : '';
+  mk(`Shots (RoF ${rof}/wpn${sq})`, num('w-shots', Math.min(rof * (a?.squadron?.size || 1), 20), 1));
+  if (kind !== 'beam' && !psi()) {
     const base = BASE_VELOCITY[enc.scale][enc.turn];
     mk('Relative velocity (mps)', num('w-velocity', base, 0));
   }
@@ -227,6 +274,7 @@ const TOGGLES = [
   ['t-detected', '…but already detected (-4 instead of -10)'],
   ['t-precision', 'Precision attack: pick the hit location (-5)'],
   ['t-weak', 'Target a weak point in the armor (-10, ignores armor)'],
+  ['t-gap', 'Psi-Wars armor gap (-10; ignores armor, disables on half damage, excess lost)'],
   ['t-proximity', 'Proximity detonation (+4 to hit, weaker warhead)'],
 ];
 function renderToggles() {
@@ -247,7 +295,6 @@ function gatherAttack() {
   const w = currentWeapon();
   if (!a || !t || !w || a === t) return null;
   const kind = w.opts.weaponType || 'beam';
-  const band = rangeBand($('atk-situation').value, enc.scale);
   const shots = Math.max(1, Number($('w-shots')?.value || 1));
   const section = $('t-section')?.value || t.facing;
   const cloaked = $('t-cloaked')?.checked;
@@ -256,11 +303,39 @@ function gatherAttack() {
     cloaked, cloakDetected: $('t-detected')?.checked,
     precision: $('t-precision')?.checked,
     weakPoint: $('t-weak')?.checked,
+    armorGap: $('t-gap')?.checked,
     ecm: computeEcm(t),
     tacticalArray: a.result.placed.some((p) => ['tacticalArray', 'multipurposeArray'].includes(p.entry.key) && slotOk(a, p)),
     streamlinedEnd: t.design.streamlined && (section === 'front' || section === 'rear'),
     shots,
   };
+
+  // Psi-Wars simplified layer: size categories, three ranges, its own tables.
+  if (psi()) {
+    const range = PSI_RANGES[$('atk-situation').value] ? $('atk-situation').value : 'neutral';
+    if (kind === 'beam') {
+      const typeKey = $('w-beamtype')?.value || 'laser';
+      const stats = beamStats(w.info.output, typeKey);
+      const heavyWeapon = ['battery_major', 'battery_medium', 'battery_spinal'].includes(w.entry.key) && psiCategory(a.design.sm) >= 1;
+      const mods = psiBeamMods({
+        ...common, attackerSM: a.design.sm, sAcc: stats.sAcc, range, heavyWeapon,
+        fixedMount: (w.opts.mount || 'turret') === 'fixed' || w.entry.spinal,
+        attackerZeroHP: a.curDhp <= 0,
+      });
+      return { a, t, w, kind, band: range, section, mods, shots, profile: { kind, stats, reach: 'full', band: range, section, shots, rcl: stats.rcl } };
+    }
+    // Missiles/torpedoes from the fixed Psi-Wars table (guns fall back to it too).
+    const mKey = $('w-psimissile')?.value || 'lightMissile';
+    const m = PSI_MISSILES[mKey];
+    const effShots = m.torpedo ? Math.max(1, Math.floor(shots / 2)) : shots;
+    const mods = psiMissileMods({ ...common, attackerSM: a.design.sm, torpedo: m.torpedo, shots: effShots });
+    return {
+      a, t, w, kind: 'missile', band: 'incoming', section, mods, shots: effShots,
+      profile: { kind: 'psiMissile', mKey, section, shots: effShots, rcl: 1 },
+    };
+  }
+
+  const band = rangeBand($('atk-situation').value, enc.scale);
   let mods;
   let profile;
   if (kind === 'beam') {
@@ -375,6 +450,8 @@ function doDodge() {
 function doDamage() {
   if (!attack?.hits) return;
   const { t, profile } = attack;
+  // Psi-Wars: everything bigger than a fighter halves penetrating damage.
+  const dr = psi() && psiCategory(t.design.sm) >= 1 && !(t.squadron?.size > 1) ? 2 : 1;
   for (let h = 1; h <= attack.hits; h++) {
     let dice;
     let div = 1;
@@ -385,6 +462,13 @@ function doDamage() {
       div = profile.stats.div;
       half = profile.reach === 'half';
       dmg = rollDice(dice);
+    } else if (profile.kind === 'psiMissile') {
+      const m = PSI_MISSILES[profile.mKey];
+      dice = parseDice(m.dice);
+      div = m.div;
+      // Torpedoes lose half their effect against hardened armor.
+      if (m.torpedo && t.design.features?.hardenedArmor) div = 0.5;
+      dmg = rollDice(dice);
     } else if (profile.warheadKey === 'conventional') {
       dice = conventionalWarhead(profile.cal);
       div = profile.proximity ? 1 : 2;
@@ -393,7 +477,19 @@ function doDamage() {
       dice = parseDice(NUKES[profile.warheadKey].dice);
       dmg = rollDice(dice, Math.random, profile.proximity ? 0.01 : 1);
     }
-    log(`Hit ${h}/${attack.hits} on ${t.id} (${profile.section} hull): ${fmtDice(dice)}${profile.kind !== 'beam' && profile.warheadKey === 'conventional' ? `×${profile.velocity} mps` : ''} → basic damage ${dmg}${div !== 1 ? ` (${div === Infinity ? '∞' : div})` : ''}.`);
+    log(`Hit ${h}/${attack.hits} on ${t.id} (${profile.section} hull): ${fmtDice(dice)}${profile.kind === 'gun' && profile.warheadKey === 'conventional' ? `×${profile.velocity} mps` : ''} → basic damage ${dmg}${div !== 1 ? ` (${div === Infinity ? '∞' : div})` : ''}.`);
+
+    // Squadrons take damage as fighter attrition, not system damage.
+    if (t.squadron?.size > 1) {
+      const frontDDR = Number(String(t.result.stats.ddr).split('/')[0]) || 0;
+      const eff = div === Infinity ? 0 : Math.floor(frontDDR / div);
+      const pen = Math.max(0, (half ? Math.floor(dmg / 2) : dmg) - eff);
+      const lost = squadronDamage(t.squadron, t.dhp, pen);
+      log(`  squadron: ${pen} penetrating — ${lost ? `1 fighter destroyed (${t.squadron.size} left)` : `no fighter lost (${t.squadron.size} left, damage pooling)`}.`);
+      if (t.squadron.size <= 0) { log(`💥 The last fighter of ${t.id} is destroyed!`); t.destroyed = true; break; }
+      continue;
+    }
+
     const res = applyHit(t, {
       section: profile.section,
       basicDamage: dmg,
@@ -401,6 +497,8 @@ function doDamage() {
       halfDamage: half,
       precisionSlot: $('t-precision')?.checked ? Number($('t-slot')?.value || 1) - 1 : null,
       weakPoint: $('t-weak')?.checked,
+      armorGap: $('t-gap')?.checked,
+      damageReduction: dr,
     });
     res.log.forEach((l) => log(`  ${l}`));
     if (t.destroyed) { log(`💥 ${t.id} is destroyed!`); break; }
@@ -445,7 +543,7 @@ function log(msg) {
 const ENC_KEY = 'gvb.ss.encounter';
 function saveEnc() {
   localStorage.setItem(ENC_KEY, JSON.stringify({
-    scale: enc.scale, turn: enc.turn,
+    scale: enc.scale, turn: enc.turn, ruleset: enc.ruleset,
     combatants: enc.combatants.map((c) => ({
       id: c.id, design: c.design, curDhp: c.curDhp, screen: c.screen,
       slots: c.slots, facing: c.facing, maneuver: c.maneuver,
@@ -461,16 +559,19 @@ function loadEnc() {
   if (!data) { flash('No saved encounter.'); return; }
   enc.scale = data.scale;
   enc.turn = data.turn;
+  enc.ruleset = data.ruleset || 'standard';
   enc.combatants = data.combatants.map((d) => {
     const c = createCombatant(d.design, { id: d.id, pilotSkill: d.pilotSkill, gunnerSkill: d.gunnerSkill });
     Object.assign(c, {
       curDhp: d.curDhp, screen: d.screen, slots: d.slots, facing: d.facing,
       maneuver: d.maneuver, destroyed: d.destroyed, htChecksAt: d.htChecksAt,
+      squadron: d.squadron || null,
     });
     return c;
   });
   $('enc-scale').value = enc.scale;
   $('enc-turn').value = enc.turn;
+  $('enc-ruleset').value = enc.ruleset;
   renderAll();
   flash('Encounter loaded.');
 }
@@ -492,10 +593,10 @@ function renderAll() {
 }
 
 function initToolbar() {
-  fillSelect($('add-preset'), [['', '— Add a sample ship —'], ...SS_PRESETS.filter((p) => !p.name.startsWith('Empty')).map((p, i) => [String(i), p.name])], '');
+  fillSelect($('add-preset'), [['', '— Add a sample ship —'], ...ALL_PRESETS.map((p, i) => [String(i), p.name])], '');
   $('add-preset').addEventListener('change', (e) => {
     if (e.target.value === '') return;
-    addShip(SS_PRESETS.filter((p) => !p.name.startsWith('Empty'))[Number(e.target.value)].design);
+    addShip(ALL_PRESETS[Number(e.target.value)].design);
     e.target.value = '';
   });
   const saves = (() => { try { return JSON.parse(localStorage.getItem('gvb.ss.saves')) || {}; } catch { return {}; } })();
@@ -525,6 +626,14 @@ function initToolbar() {
   fillSelect($('enc-turn'), TURN_LENGTHS.map((t) => [t, TURN_LABELS[t]]), enc.turn);
   $('enc-scale').addEventListener('change', () => { enc.scale = $('enc-scale').value; renderAttackSelectors(); renderMods(); });
   $('enc-turn').addEventListener('change', () => { enc.turn = $('enc-turn').value; renderWeaponParams(); });
+  $('enc-ruleset').addEventListener('change', () => {
+    enc.ruleset = $('enc-ruleset').value;
+    log(psi()
+      ? '— Ruleset: Psi-Wars simplified space opera (size categories, three ranges, DR 2 for corvettes+, armor gaps, fixed missile table, squadrons).'
+      : '— Ruleset: standard GURPS Spaceships basic combat.');
+    renderAll();
+    refreshExplain();
+  });
 
   $('atk-ship').addEventListener('change', renderWeaponSelect);
   $('atk-weapon').addEventListener('change', renderWeaponParams);
@@ -544,4 +653,11 @@ function initToolbar() {
 initToolbar();
 renderAll();
 renderTac();
+initExplain({
+  toggleBtnId: 'btn-explain',
+  storageKey: 'gvb.explain.combat',
+  fieldHelp: COMBAT_FIELD_HELP,
+  optionHelp: {},
+  sectionHelp: COMBAT_SECTION_HELP,
+});
 log('Encounter ready. Add ships, set facings and maneuvers, then fire away.');

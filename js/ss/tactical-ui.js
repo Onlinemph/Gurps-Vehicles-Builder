@@ -5,6 +5,9 @@
 
 import { SECTIONS } from './tables.js';
 import { SS_PRESETS } from './presets.js';
+import { PSIWARS_PRESETS } from './presets-psiwars.js';
+import { initExplain } from '../help-core.js';
+import { TAC_FIELD_HELP, TAC_SECTION_HELP } from './help-combat.js';
 import {
   BEAM_TYPES, GUN_TYPES, NUKES,
   applyHit, beamStats, combatantWeapons, conventionalWarhead, createCombatant,
@@ -652,7 +655,7 @@ function boot() {
   $('tac-scale').addEventListener('change', () => { battle.scaleIdx = Number($('tac-scale').value); renderAll(); });
   $('tac-turn').addEventListener('change', () => { battle.turn = $('tac-turn').value; renderAll(); });
 
-  const presets = SS_PRESETS.filter((p) => !p.name.startsWith('Empty'));
+  const presets = [...SS_PRESETS.filter((p) => !p.name.startsWith('Empty')), ...PSIWARS_PRESETS];
   fill($('add-preset'), [['', '— Add a sample ship —'], ...presets.map((p, i) => [String(i), p.name])], '');
   $('add-preset').addEventListener('change', (e) => {
     if (e.target.value === '') return;
@@ -681,6 +684,13 @@ function boot() {
 
   initMap();
   renderAll();
+  initExplain({
+    toggleBtnId: 'btn-explain',
+    storageKey: 'gvb.explain.tactical',
+    fieldHelp: TAC_FIELD_HELP,
+    optionHelp: {},
+    sectionHelp: TAC_SECTION_HELP,
+  });
   log('Tactical map ready. Add ships, press "move" on each in turn, then fire or launch salvos.');
 }
 
