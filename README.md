@@ -122,7 +122,12 @@ bands (Neutral/Engaged/Hugging), Damage Reduction 2 for corvettes and up,
 armor-gap called shots (ignore armor, disable at half thresholds, excess
 damage lost), a fixed missile/torpedo damage table, crew-quality presets, and
 mook fighter **squadrons** that pool damage and lose fighters instead of
-tracking systems (see `tests/ss-psiwars.test.mjs`; the Tiger Manticore
+tracking systems, and the **dogfighting layer**: Close/Evade/Hold/Retreat
+resolved as quick contests of Pilot skill (+1 per 25G of acceleration,
+doubled when evading), optional stunts (-2 to -10 for +1 per -2, with drifts
+and wrecked engines on a miss), engagement and Advantaged status tracked on
+each ship card (up to +4 on the tail), and gunnery **point defense** against
+inbound missiles (see `tests/ss-psiwars.test.mjs`; the Tiger Manticore
 computes to its published $746.6M exactly). Psi-Wars is a fan creation by
 Mailanka; no setting text is reproduced — mechanics only.
 

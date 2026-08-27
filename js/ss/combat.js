@@ -497,6 +497,7 @@ export function psiBeamMods(p) {
   if (p.tacticalArray) add(Math.max(0, 2 - (p.ecm || 0)), 'targeting array vs ECM');
   else if (p.ecm) add(0, '');
   if (p.fixedMount) add(2, 'spinal/fixed mount');
+  if (p.advantage) add(Math.min(4, p.advantage), 'Advantaged: on the target\'s tail');
   if (p.streamlinedEnd) add(-1, 'streamlined front/rear hull');
   if (p.precision) add(-5, 'precision attack');
   if (p.armorGap) add(-10, 'armor gap');
@@ -528,6 +529,63 @@ export function psiMissileMods(p) {
   if (p.precision) add(-5, 'precision attack');
   if (p.weakPoint) add(-10, 'armor weak point');
   if (p.shots >= 2) add(rapidFireBonus(p.shots), `${p.shots} shots`);
+  return mods;
+}
+
+// Psi-Wars dogfighting: every 25G of acceleration is +1 in pilot contests.
+export function psiAccelBonus(accelG) {
+  return Math.floor(Math.max(0, accelG || 0) / 25);
+}
+
+// Psi-Wars maneuvers, resolved as quick contests of Pilot skill.
+export const PSI_MANEUVERS = {
+  close: { name: 'Close', desc: 'Fight to get on the enemy: success engages (Close range); by 10+, or when already engaged, win Advantage' },
+  evade: { name: 'Evasive Action', desc: 'Break off: give up Advantage, double your acceleration bonus, success breaks the engagement (+1 dodge)' },
+  hold: { name: 'Hold Course / shake', desc: 'Fly straight; contest only to shake an Advantaged pursuer' },
+  retreat: { name: 'Retreat', desc: 'Leave the fight — only possible once nobody is engaged with you' },
+};
+
+// One quick contest of Pilot between mover and opponent. A stunt is a second
+// Pilot roll at -2..-10 that adds +1 to the contest per -2 taken — but failing
+// it drifts (or wrecks the engines on a bad failure).
+export function psiManeuverContest({ moverSkill, moverAccel, opponentSkill, opponentAccel, maneuver, stuntPenalty = 0, moverSR = 4, rng = Math.random }) {
+  const log = [];
+  let bonus = psiAccelBonus(moverAccel);
+  if (maneuver === 'evade') bonus *= 2; // evasive action doubles the accel bonus
+  let stunt = null;
+  if (stuntPenalty) {
+    const r = successRoll(moverSkill + stuntPenalty, rng);
+    const gain = Math.floor(-stuntPenalty / 2);
+    stunt = { roll: r, gain };
+    if (r.success) {
+      bonus += gain;
+      log.push(`stunt at ${stuntPenalty} succeeds (rolled ${r.dice}): +${gain} to the contest`);
+    } else {
+      const wrecked = -r.margin > moverSR;
+      log.push(`stunt at ${stuntPenalty} FAILS (rolled ${r.dice}, by ${-r.margin}): ${wrecked ? 'engines disabled!' : 'uncontrolled drift!'}`);
+      return { log, stunt, failedStunt: true, wrecked, won: false };
+    }
+  }
+  const mover = successRoll(moverSkill + bonus, rng);
+  const opp = successRoll(opponentSkill + psiAccelBonus(opponentAccel), rng);
+  const won = mover.success && (!opp.success || mover.margin > opp.margin);
+  const by = mover.margin - opp.margin;
+  log.push(`quick contest of Pilot: ${moverSkill}+${bonus} rolls ${mover.dice} (margin ${mover.margin}) vs ${opponentSkill}+${psiAccelBonus(opponentAccel)} rolls ${opp.dice} (margin ${opp.margin}) — ${won ? `mover wins by ${by}` : mover.success && opp.success && mover.margin === opp.margin ? 'tie: no change' : 'mover loses'}`);
+  return { log, stunt, mover, opp, won, by };
+}
+
+// Point defense against a Psi-Wars missile: the target's gunners try to shoot
+// it down before impact. Ignore range/target modifiers; the farther out the
+// salvo was fired, the longer the defenders get to track it.
+export function psiPointDefenseMods({ mKey, firedFrom, defenderSM, heavyWeapon = false }) {
+  const mods = [];
+  const add = (v, label) => { if (v) mods.push([v, label]); };
+  const m = PSI_MISSILES[mKey];
+  add(m.pd, `${m.name} point-defense penalty`);
+  // The missile counts as fighter-sized for relative size.
+  const cat = psiCategory(defenderSM);
+  if (cat > 0) add(-(heavyWeapon ? 2 : 1) * cat, `${heavyWeapon ? 'heavy' : 'light'} weapon tracking a missile`);
+  add(firedFrom === 'neutral' ? 4 : firedFrom === 'engaged' ? 2 : 0, 'flight time (fired from range)');
   return mods;
 }
 

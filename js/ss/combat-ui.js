@@ -9,16 +9,17 @@ import { SS_PRESETS } from './presets.js';
 import { PSIWARS_PRESETS } from './presets-psiwars.js';
 import {
   BASE_VELOCITY, BEAM_TYPES, GUN_TYPES, NUKES,
-  PSI_CATEGORIES, PSI_MISSILES, PSI_RANGES,
+  PSI_CATEGORIES, PSI_MANEUVERS, PSI_MISSILES, PSI_RANGES,
   RANGE_LABELS, ROF, SCALES, SCALE_LABELS, SITUATIONS,
   TURN_LABELS, TURN_LENGTHS,
   applyHit, ballisticAttackMods, beamAttackMods, beamRangeCheck, beamStats,
   combatantWeapons, conventionalWarhead, createCombatant, dodgeScore,
-  effectiveStats, fmtDice, missileSAcc, parseDice, psiBeamMods, psiCategory,
-  psiMissileMods, rangeBand, rollDice, squadronDamage, successRoll,
+  effectiveStats, fmtDice, missileSAcc, parseDice, psiAccelBonus, psiBeamMods,
+  psiCategory, psiManeuverContest, psiMissileMods, psiPointDefenseMods,
+  rangeBand, rollDice, squadronDamage, successRoll,
 } from './combat.js';
 import { initExplain, refreshExplain } from '../help-core.js';
-import { COMBAT_FIELD_HELP, COMBAT_SECTION_HELP } from './help-combat.js';
+import { COMBAT_FIELD_HELP, COMBAT_OPTION_HELP, COMBAT_SECTION_HELP } from './help-combat.js';
 
 const ALL_PRESETS = [...SS_PRESETS.filter((p) => !p.name.startsWith('Empty')), ...PSIWARS_PRESETS];
 
@@ -33,6 +34,8 @@ const enc = {
   combatants: [],
 };
 const psi = () => enc.ruleset === 'psiwars';
+// Psi-Wars dogfighting state per combatant.
+const psiState = (c) => (c.psi ||= { engagedWith: null, advOver: null, adv: 0 });
 let attack = null; // pending attack state
 
 // --- Fleet management --------------------------------------------------------
@@ -112,7 +115,8 @@ function renderFleet() {
             title="Mook fighter wings act as one body: 1 = a single ship; 5 = a wing; 20 = a squadron">
         </label>
         <label>&nbsp;<small class="muted">${c.squadron?.size > 1 ? `${c.squadron.size} fighters — damage pools; every ${Math.ceil(c.dhp / 2)} penetration downs one` : `${PSI_CATEGORIES[psiCategory(c.design.sm)]}: ${psiCategory(c.design.sm) >= 1 ? 'halves all penetrating damage (DR 2)' : 'full damage; goes first in the round'}`}</small></label>
-      </div>` : ''}
+      </div>
+      <p class="muted">Dogfight: accel bonus +${psiAccelBonus(s.accelG)}${psiState(c).engagedWith ? ` · engaged with ${esc(psiState(c).engagedWith)}` : ' · not engaged'}${psiState(c).advOver ? ` · <b>Advantaged +${psiState(c).adv} over ${esc(psiState(c).advOver)}</b>` : ''}</p>` : ''}
       <div class="dmg-grid">${SECTIONS.map((sec) => dmgRow(c, ci, sec)).join('')}</div>
       <p class="muted dmg-hint">Click a system to cycle OK → disabled → destroyed. ⚠ = volatile.</p>
     `;
@@ -177,6 +181,102 @@ function dmgRow(c, ci, sec) {
     return `<span class="dmg-cell ${st.state}${st.sys ? '' : ' empty'}" data-slot="${ci}:${sec}:${i}" title="${esc(title)}">${label}${st.volatile ? '⚠' : ''}</span>`;
   }).join('');
   return `<div class="dmg-section"><span class="dmg-label">${sec[0].toUpperCase()}</span>${cells}</div>`;
+}
+
+// --- Psi-Wars dogfight card ----------------------------------------------------
+function renderDogfight() {
+  const host = $('dogfight');
+  if (!host) return;
+  if (!psi() || enc.combatants.length < 2) { host.innerHTML = ''; return; }
+  const prev = { m: $('df-mover')?.value, o: $('df-opponent')?.value, man: $('df-maneuver')?.value, s: $('df-stunt')?.value };
+  const names = enc.combatants.map((c, i) => [String(i), c.id]);
+  host.innerHTML = `
+    <div class="card">
+      <h2>Dogfight (Psi-Wars)</h2>
+      <div class="grid2">
+        <label>Mover <select id="df-mover"></select></label>
+        <label>Against <select id="df-opponent"></select></label>
+        <label>Maneuver <select id="df-maneuver"></select></label>
+        <label>Stunt <select id="df-stunt"></select></label>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <span id="df-note" class="muted" style="font-size:12.5px"></span>
+        <button class="btn primary" id="btn-contest">Roll the contest</button>
+      </div>
+    </div>`;
+  fillSelect($('df-mover'), names, prev.m ?? '0');
+  fillSelect($('df-opponent'), names, prev.o ?? '1');
+  fillSelect($('df-maneuver'), Object.entries(PSI_MANEUVERS).map(([k, v]) => [k, v.name]), prev.man ?? 'close');
+  fillSelect($('df-stunt'), [['0', 'None'], ['-2', 'Stunt -2 (+1)'], ['-4', 'Stunt -4 (+2)'], ['-6', 'Stunt -6 (+3)'], ['-8', 'Stunt -8 (+4)'], ['-10', 'Stunt -10 (+5)']], prev.s ?? '0');
+  const note = () => {
+    const m = enc.combatants[Number($('df-mover').value)];
+    const o = enc.combatants[Number($('df-opponent').value)];
+    if (!m || !o || m === o) { $('df-note').textContent = 'Pick two different ships.'; return; }
+    const man = $('df-maneuver').value;
+    const mb = psiAccelBonus(effectiveStats(m).accelG) * (man === 'evade' ? 2 : 1);
+    $('df-note').textContent = `${m.id} Pilot ${m.pilotSkill}+${mb} vs ${o.id} Pilot ${o.pilotSkill}+${psiAccelBonus(effectiveStats(o).accelG)} — ${PSI_MANEUVERS[man].desc}.`;
+  };
+  ['df-mover', 'df-opponent', 'df-maneuver', 'df-stunt'].forEach((id) => $(id).addEventListener('change', () => { note(); refreshExplain(); }));
+  $('btn-contest').addEventListener('click', resolveDogfight);
+  note();
+}
+
+function resolveDogfight() {
+  const m = enc.combatants[Number($('df-mover').value)];
+  const o = enc.combatants[Number($('df-opponent').value)];
+  if (!m || !o || m === o) return;
+  const man = $('df-maneuver').value;
+  const ms = psiState(m);
+  const os = psiState(o);
+  if (man === 'retreat' && enc.combatants.some((x) => x !== m && psiState(x).engagedWith === m.id && !x.destroyed)) {
+    log(`${m.id} cannot retreat: someone is still engaged with them (break the engagement with Evasive Action first).`);
+    return;
+  }
+  if (man === 'evade' && ms.advOver) {
+    log(`${m.id} gives up Advantage over ${ms.advOver} to go evasive.`);
+    ms.advOver = null; ms.adv = 0;
+  }
+  const res = psiManeuverContest({
+    moverSkill: m.pilotSkill,
+    moverAccel: effectiveStats(m).accelG,
+    opponentSkill: o.pilotSkill,
+    opponentAccel: effectiveStats(o).accelG,
+    maneuver: man,
+    stuntPenalty: Number($('df-stunt').value) || 0,
+    moverSR: effectiveStats(m).sr ?? 4,
+  });
+  log(`— ${m.id} ${PSI_MANEUVERS[man].name} vs ${o.id}:`);
+  res.log.forEach((l) => log(`  ${l}`));
+  if (res.failedStunt) {
+    m.maneuver = 'uncontrolledDrift';
+    log(`  ${m.id} tumbles into an uncontrolled drift${res.wrecked ? ' — mark the engines disabled on their card!' : ''} (no dodge until they recover).`);
+  } else if (res.won) {
+    if (man === 'close') {
+      if (ms.engagedWith === o.id || res.by >= 10) {
+        ms.adv = Math.min(4, (ms.advOver === o.id ? ms.adv : 0) + 1);
+        ms.advOver = o.id;
+        log(`  ${m.id} is on ${o.id}'s tail: Advantaged +${ms.adv} to hit (cumulative, max +4).`);
+      }
+      ms.engagedWith = o.id;
+      log(`  ${m.id} is now engaged with ${o.id} — Close range (Engaged, -4).`);
+    } else if (man === 'evade') {
+      if (ms.engagedWith === o.id) ms.engagedWith = null;
+      if (os.engagedWith === m.id) { os.engagedWith = null; log(`  ${o.id} loses the engagement.`); }
+      if (os.advOver === m.id) { os.advOver = null; os.adv = 0; log(`  ${o.id}'s Advantage is shaken off.`); }
+      log(`  ${m.id} breaks away clean.`);
+    } else if (man === 'hold') {
+      if (os.advOver === m.id) { os.advOver = null; os.adv = 0; log(`  ${m.id} shakes ${o.id} off their tail.`); }
+      else log(`  ${m.id} holds course.`);
+    } else if (man === 'retreat') {
+      ms.engagedWith = null;
+      log(`  ${m.id} escapes the battle — back to Neutral range (or gone entirely).`);
+    }
+  } else {
+    log(`  No change: ${o.id} matches the move.`);
+  }
+  renderFleet();
+  renderDogfight();
+  refreshExplain();
 }
 
 // --- Attack console ------------------------------------------------------------
@@ -320,6 +420,7 @@ function gatherAttack() {
       const mods = psiBeamMods({
         ...common, attackerSM: a.design.sm, sAcc: stats.sAcc, range, heavyWeapon,
         fixedMount: (w.opts.mount || 'turret') === 'fixed' || w.entry.spinal,
+        advantage: psiState(a).advOver === t.id ? psiState(a).adv : 0,
         attackerZeroHP: a.curDhp <= 0,
       });
       return { a, t, w, kind, band: range, section, mods, shots, profile: { kind, stats, reach: 'full', band: range, section, shots, rcl: stats.rcl } };
@@ -331,7 +432,7 @@ function gatherAttack() {
     const mods = psiMissileMods({ ...common, attackerSM: a.design.sm, torpedo: m.torpedo, shots: effShots });
     return {
       a, t, w, kind: 'missile', band: 'incoming', section, mods, shots: effShots,
-      profile: { kind: 'psiMissile', mKey, section, shots: effShots, rcl: 1 },
+      profile: { kind: 'psiMissile', mKey, section, shots: effShots, rcl: 1, firedFrom: range },
     };
   }
 
@@ -407,6 +508,7 @@ function renderMods() {
     + (g.profile.kind === 'beam' && g.profile.reach === 'half' ? ' · <b>half damage at this range</b>' : '');
   $('atk-skill').textContent = `Effective skill ${eff} (Gunner ${g.a.gunnerSkill} ${total >= 0 ? '+' : ''}${total})`;
   attack = { ...g, eff };
+  refreshExplain(); // dynamic weapon controls get their Explain notes re-attached
 }
 
 function doAttack() {
@@ -419,14 +521,46 @@ function doAttack() {
   log(`${attack.a.id} fires ${attack.w.entry.name} (${attack.kind}) at ${attack.t.id} — needs ${attack.eff}, rolls ${r.dice}: ${r.critSuccess ? 'CRITICAL SUCCESS' : r.critFailure ? 'CRITICAL FAILURE (weapon disabled!)' : r.success ? `success by ${r.margin}` : `failure by ${-r.margin}`}${hits ? ` — ${hits} hit(s)` : ''}.`);
   if (r.critFailure) { $('atk-status').textContent = 'Critical failure: treat the firing system as disabled.'; return; }
   if (!r.success) { $('atk-status').textContent = 'Miss.'; return; }
-  $('atk-status').textContent = `${hits} hit(s) pending. ${r.critSuccess ? 'Critical: no dodge allowed.' : 'Target may dodge.'}`;
-  $('btn-dodge').disabled = r.critSuccess || !canDodge(attack.t);
+  if (attack.profile.kind === 'psiMissile') {
+    // Psi-Wars: missiles are shot down by point defense, not dodged.
+    $('atk-status').textContent = `${hits} missile(s) inbound. The target's gunners may try point defense.`;
+    $('btn-dodge').textContent = 'Point defense';
+    $('btn-dodge').disabled = false;
+  } else {
+    $('atk-status').textContent = `${hits} hit(s) pending. ${r.critSuccess ? 'Critical: no dodge allowed.' : 'Target may dodge.'}`;
+    $('btn-dodge').textContent = 'Target dodges';
+    $('btn-dodge').disabled = r.critSuccess || !canDodge(attack.t);
+  }
   $('btn-damage').disabled = false;
 }
 
 function doDodge() {
   if (!attack?.hits) return;
   const t = attack.t;
+  if (attack.profile.kind === 'psiMissile') {
+    // Point defense: a Gunner roll per the Psi-Wars table; margin downs extra missiles.
+    const mods = psiPointDefenseMods({
+      mKey: attack.profile.mKey,
+      firedFrom: attack.profile.firedFrom,
+      defenderSM: t.design.sm,
+      heavyWeapon: false,
+    });
+    const total = mods.reduce((s, [v]) => s + v, 0);
+    const eff = t.gunnerSkill + total;
+    const r = successRoll(eff);
+    const detail = mods.filter(([v]) => v).map(([v, l]) => `${v > 0 ? '+' : ''}${v} ${l}`).join(', ');
+    if (r.success) {
+      const downed = Math.min(attack.hits, 1 + r.margin);
+      attack.hits -= downed;
+      log(`${t.id} point defense (Gunner ${t.gunnerSkill}${total >= 0 ? '+' : ''}${total}: ${detail}) rolls ${r.dice}: shoots down ${downed} missile(s); ${attack.hits} still inbound.`);
+    } else {
+      log(`${t.id} point defense (needs ${eff}: ${detail}) rolls ${r.dice}: the missiles get through.`);
+    }
+    $('btn-dodge').disabled = true;
+    if (!attack.hits) { $('btn-damage').disabled = true; $('atk-status').textContent = 'All missiles shot down!'; }
+    else $('atk-status').textContent = `${attack.hits} missile(s) to resolve.`;
+    return;
+  }
   const ds = dodgeScore({
     piloting: t.pilotSkill,
     hnd: effectiveStats(t).hnd ?? 0,
@@ -548,7 +682,7 @@ function saveEnc() {
       id: c.id, design: c.design, curDhp: c.curDhp, screen: c.screen,
       slots: c.slots, facing: c.facing, maneuver: c.maneuver,
       pilotSkill: c.pilotSkill, gunnerSkill: c.gunnerSkill, destroyed: c.destroyed,
-      htChecksAt: c.htChecksAt,
+      htChecksAt: c.htChecksAt, squadron: c.squadron || null, psi: c.psi || null,
     })),
   }));
   flash('Encounter saved.');
@@ -565,7 +699,7 @@ function loadEnc() {
     Object.assign(c, {
       curDhp: d.curDhp, screen: d.screen, slots: d.slots, facing: d.facing,
       maneuver: d.maneuver, destroyed: d.destroyed, htChecksAt: d.htChecksAt,
-      squadron: d.squadron || null,
+      squadron: d.squadron || null, psi: d.psi || null,
     });
     return c;
   });
@@ -587,9 +721,11 @@ function flash(msg) {
 
 function renderAll() {
   renderFleet();
+  renderDogfight();
   renderAttackSelectors();
   renderToggles();
   renderMods();
+  refreshExplain();
 }
 
 function initToolbar() {
@@ -657,7 +793,7 @@ initExplain({
   toggleBtnId: 'btn-explain',
   storageKey: 'gvb.explain.combat',
   fieldHelp: COMBAT_FIELD_HELP,
-  optionHelp: {},
+  optionHelp: COMBAT_OPTION_HELP,
   sectionHelp: COMBAT_SECTION_HELP,
 });
 log('Encounter ready. Add ships, set facings and maneuvers, then fire away.');

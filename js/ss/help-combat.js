@@ -24,9 +24,68 @@ export const COMBAT_FIELD_HELP = {
   'tac-scale': 'The size of one map hex, if your group plays on the SS3 hex grid instead of range bands.',
   'tac-hexes': 'Distance to the target in hexes. The calculator turns it into the standard GURPS range penalty.',
   't-slot': 'Which system slot (1-6, counting down the hull) a precision attack aims for.',
+  'df-mover': 'The pilot making a move this turn. Their acceleration bonus (+1 per 25G) is added to the contest.',
+  'df-opponent': 'The ship being outflown. It resists with its own Pilot skill and acceleration bonus.',
+  'df-maneuver': 'What the mover is trying to do. Each maneuver is a quick contest of Pilot skill: both roll, higher margin of success wins.',
+  'df-stunt': 'A flashy second Pilot roll before the contest — threading an asteroid gap, skimming a hull. Every -2 of risk adds +1 to the contest if it works; failing puts you in an uncontrolled drift (or wrecks the engines on a bad failure).',
+};
+
+export const COMBAT_OPTION_HELP = {
+  'atk-situation': {
+    rendezvous: 'Docked or matched course at arm\'s length — you cannot miss.',
+    formation: 'Flying formation, or a missile salvo on final approach: point-blank.',
+    collision: 'Head-on pass: closing so fast the window to shoot is brief.',
+    engaged: 'A dogfight — both ships actively maneuvering against each other.',
+    neutral: 'Neither ship has committed to a fight: long-range sparring, -8 to hit in Psi-Wars.',
+    hugging: 'Psi-Wars point-blank: flying right down their hull. No range penalty — and torpedoes hurt.',
+  },
+  'w-mode': {
+    single: 'One aimed shot per weapon.',
+    rapid: 'Hose the target: more shots for a bonus to hit, but each costs ammunition or capacitor charge.',
+    veryRapid: 'Maximum rate of fire — the biggest to-hit bonus and the fastest way to empty the magazine.',
+  },
+  'w-beamtype': {
+    laser: 'The workhorse: accurate, decent range, halves armor (÷2).',
+    uvLaser: 'Shorter wavelength, better focus: one range column better than a laser.',
+    xrayLaser: 'Punches armor at ÷5 and burns through to internals.',
+    graser: 'Gamma-ray laser: ÷10 armor — almost nothing stops it.',
+    heatRay: 'A superscience thermal beam: no armor divisor, raw burn.',
+    particle: 'Charged particles: shorter ranged and less accurate, but ÷5 armor and radiation.',
+    antiparticle: 'Antimatter particles: double damage dice with explosive, irradiating hits.',
+    ghostParticle: 'Superscience: ignores armor entirely (÷∞) — only bulk stops it.',
+    plasma: 'A short-ranged fire hose of star-stuff: double dice, explosive, but sAcc -6.',
+    graviton: 'Superscience gravity beam: ignores armor but only a tenth of the output reaches as damage.',
+    tractor: 'No damage — grabs and holds the target instead.',
+    conversion: 'TL12 superscience: ÷10 armor with a corrosive follow-up.',
+    disintegrator: 'The ultimate: ignores armor, dissolves matter.',
+    lightning: 'A crackling TL7 superscience arc — cheap, short-ranged, surge effects.',
+  },
+  'w-psimissile': {
+    lightMissile: 'A 20cm shipkiller for fighters: small warhead but armor-piercing (÷10).',
+    lightTorpedo: 'A 20cm torpedo: a huge slow warhead (6d×20) that armor resists normally. Racks fire every other turn.',
+    mediumMissile: 'The 40cm standard anti-ship missile: 6d×2 at ÷10 armor.',
+    mediumTorpedo: 'A 40cm capital-ship killer: 6d×40. Halve it against hardened armor.',
+    heavyMissile: 'An 80cm precision lance: 6d×4 at ÷10 — cracks any armor belt.',
+    heavyTorpedo: 'The 80cm dreadnought-buster: 6d×80. Nothing shrugs this off.',
+  },
+  'df-maneuver': {
+    close: 'Chase them down. Win: you are Engaged (Close range). Win by 10+, or win while already engaged: you are Advantaged — on their tail.',
+    evade: 'Break away. Your acceleration bonus doubles; winning shakes the pursuer off (and evasive flying gives +1 dodge).',
+    hold: 'Fly your course. Contest only matters to shake an Advantaged pursuer off your tail.',
+    retreat: 'Leave the battle. You must first break every engagement on you — then win the contest to escape.',
+  },
+  'df-stunt': {
+    0: 'No stunt — fly it straight.',
+    '-2': 'A small flourish: +1 to the contest if the Pilot roll at -2 succeeds.',
+    '-4': 'Risky: +2 if the roll at -4 succeeds.',
+    '-6': 'Daring: +3 at -6.',
+    '-8': 'Reckless: +4 at -8.',
+    '-10': 'Legendary: +5 at -10 — miss badly and you wreck your own engines.',
+  },
 };
 
 export const COMBAT_SECTION_HELP = {
+  Dogfight: 'Psi-Wars flying is a duel of Pilot skill. Pick who is making a move and against whom, choose the maneuver (add a stunt if you dare), and roll the contest — engagement and Advantaged status update on the ship cards, and being on someone\'s tail stacks up to +4 to hit.',
   Encounter: 'Set the stage first: pick the combat scale and turn length (and the ruleset, if your table uses Psi-Wars). Then add ships from the toolbar above — presets, saved designs, or imported JSON.',
   Attack: 'Resolving fire takes three steps, just like at the table: (1) Roll attack — gunner skill plus every modifier below. (2) The target may dodge to shake off hits. (3) Roll damage & apply — armor soaks, the rest penetrates, and damaged systems shut down automatically on each ship\'s card.',
   'Combat log': 'A running record of every roll, hit, and system knocked out — copy it into your session notes when the dust settles.',
@@ -42,6 +101,21 @@ export const TAC_FIELD_HELP = {
   'atk-extra': 'The specific beam or munition type, which sets accuracy, reach in hexes, and armor penetration.',
   'atk-shots': 'Shots fired this attack. Margin of success over the weapon\'s Recoil lands extra hits.',
   'atk-skill-in': 'The firing ship\'s Gunner skill. A trained professional is 12; an ace is 15+.',
+};
+
+export const TAC_OPTION_HELP = {
+  'tac-scale': {
+    0: 'Knife-fight scale: 10 miles per hex. Beams reach far across the map; ships cross it in a blink.',
+    1: 'The standard battle: 100 miles per hex.',
+    2: 'Fleet actions: 1,000 miles per hex — long-range beams and missile waves.',
+    3: 'Orbital distances: 10,000 miles per hex. Only the biggest weapons matter.',
+  },
+  'tac-turn': {
+    '20s': 'Frantic 20-second turns: little movement, few shots, lots of decisions.',
+    '1m': 'One-minute turns: the dogfighting standard.',
+    '3m': 'Three-minute turns: velocities triple and rate of fire climbs.',
+    '10m': 'Ten-minute turns: ships streak across the map between shots.',
+  },
 };
 
 export const TAC_SECTION_HELP = {

@@ -7,7 +7,7 @@ import { SECTIONS } from './tables.js';
 import { SS_PRESETS } from './presets.js';
 import { PSIWARS_PRESETS } from './presets-psiwars.js';
 import { initExplain } from '../help-core.js';
-import { TAC_FIELD_HELP, TAC_SECTION_HELP } from './help-combat.js';
+import { TAC_FIELD_HELP, TAC_OPTION_HELP, TAC_SECTION_HELP } from './help-combat.js';
 import {
   BEAM_TYPES, GUN_TYPES, NUKES,
   applyHit, beamStats, combatantWeapons, conventionalWarhead, createCombatant,
@@ -688,7 +688,7 @@ function boot() {
     toggleBtnId: 'btn-explain',
     storageKey: 'gvb.explain.tactical',
     fieldHelp: TAC_FIELD_HELP,
-    optionHelp: {},
+    optionHelp: TAC_OPTION_HELP,
     sectionHelp: TAC_SECTION_HELP,
   });
   log('Tactical map ready. Add ships, press "move" on each in turn, then fire or launch salvos.');

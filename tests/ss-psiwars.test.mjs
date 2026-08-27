@@ -8,9 +8,9 @@ import assert from 'node:assert/strict';
 import { computeShip } from '../js/ss/ship.js';
 import { PSIWARS_PRESETS } from '../js/ss/presets-psiwars.js';
 import {
-  PSI_CATEGORIES, PSI_MISSILES, PSI_RANGES,
-  applyHit, createCombatant, psiBeamMods, psiCategory, psiMissileMods,
-  squadronDamage,
+  PSI_CATEGORIES, PSI_MANEUVERS, PSI_MISSILES, PSI_RANGES,
+  applyHit, createCombatant, psiAccelBonus, psiBeamMods, psiCategory,
+  psiManeuverContest, psiMissileMods, psiPointDefenseMods, squadronDamage,
 } from '../js/ss/combat.js';
 
 const rngQueue = (...faces) => {
@@ -182,6 +182,86 @@ test('squadronDamage: pools damage, at most one fighter per hit', () => {
   assert.equal(sq.size, 4);
   assert.equal(squadronDamage(sq, dhp, 40), 1); // huge hit still only downs 1
   assert.equal(sq.size, 3);
+});
+
+// --- Dogfighting: contests, advantage, point defense -------------------------
+
+test('psiAccelBonus is +1 per full 25G', () => {
+  assert.equal(psiAccelBonus(24), 0);
+  assert.equal(psiAccelBonus(25), 1);
+  assert.equal(psiAccelBonus(75), 3);
+  assert.equal(psiAccelBonus(200), 8);
+  assert.equal(psiAccelBonus(undefined), 0);
+});
+
+test('psiManeuverContest: better pilot with more thrust wins the close', () => {
+  // Mover: skill 12 + accel 75G (+3) = 15, rolls 9 → margin 6.
+  // Opponent: skill 12 + 0 = 12, rolls 15 → margin -3. Mover wins by 9.
+  const res = psiManeuverContest({
+    moverSkill: 12, moverAccel: 75, opponentSkill: 12, opponentAccel: 0,
+    maneuver: 'close', rng: rngQueue(3, 3, 3, 5, 5, 5),
+  });
+  assert.equal(res.won, true);
+  assert.equal(res.by, 9);
+});
+
+test('psiManeuverContest: evasive action doubles the accel bonus', () => {
+  // Mover: skill 10 + 2×psiAccelBonus(50G)=+4 → 14, rolls 12 → margin 2.
+  // Opponent: skill 12 + 2 (50G) = 14, rolls 13 → margin 1. Mover wins by 1.
+  const res = psiManeuverContest({
+    moverSkill: 10, moverAccel: 50, opponentSkill: 12, opponentAccel: 50,
+    maneuver: 'evade', rng: rngQueue(4, 4, 4, 5, 4, 4),
+  });
+  assert.equal(res.won, true);
+  assert.equal(res.by, 1);
+});
+
+test('psiManeuverContest: a successful stunt adds +1 per -2 taken', () => {
+  // Stunt at -4: skill 12-4=8 rolls 7 → success, +2 to the contest.
+  // Mover: 12 + 0 accel + 2 stunt = 14 rolls 10 → margin 4; opponent 12 rolls 12 → 0.
+  const res = psiManeuverContest({
+    moverSkill: 12, moverAccel: 0, opponentSkill: 12, opponentAccel: 0,
+    maneuver: 'close', stuntPenalty: -4, rng: rngQueue(2, 2, 3, 3, 3, 4, 4, 4, 4),
+  });
+  assert.equal(res.stunt.gain, 2);
+  assert.equal(res.won, true);
+  assert.equal(res.by, 4);
+});
+
+test('psiManeuverContest: a badly failed stunt wrecks the engines', () => {
+  // Stunt at -4: skill 8 rolls 18 → margin -10, worse than SR 4 → wrecked.
+  const res = psiManeuverContest({
+    moverSkill: 12, moverAccel: 0, opponentSkill: 12, opponentAccel: 0,
+    maneuver: 'close', stuntPenalty: -4, moverSR: 4, rng: rngQueue(6, 6, 6),
+  });
+  assert.equal(res.failedStunt, true);
+  assert.equal(res.wrecked, true);
+  assert.equal(res.won, false);
+});
+
+test('psiBeamMods: Advantaged tail position adds up to +4', () => {
+  const mods = psiBeamMods({
+    targetSM: 6, attackerSM: 6, sAcc: 0, range: 'engaged', advantage: 3, shots: 1,
+  });
+  assert.ok(mods.some(([v, l]) => v === 3 && /Advantaged/.test(l)));
+  const capped = psiBeamMods({
+    targetSM: 6, attackerSM: 6, sAcc: 0, range: 'engaged', advantage: 9, shots: 1,
+  });
+  assert.ok(capped.some(([v, l]) => v === 4 && /Advantaged/.test(l)));
+});
+
+test('psiPointDefenseMods: pd penalty, missile-as-fighter tracking, flight-time bonus', () => {
+  const mods = psiPointDefenseMods({ mKey: 'lightMissile', firedFrom: 'neutral', defenderSM: 9 });
+  const total = mods.reduce((s, [v]) => s + v, 0);
+  // -7 pd, -1 corvette light weapon vs fighter-sized missile, +4 fired from Neutral.
+  assert.equal(total, -4);
+  const hug = psiPointDefenseMods({ mKey: 'heavyTorpedo', firedFrom: 'hugging', defenderSM: 4 });
+  // pd 0, fighter (no size penalty), +0 flight time → no modifiers at all.
+  assert.equal(hug.reduce((s, [v]) => s + v, 0), 0);
+});
+
+test('PSI_MANEUVERS covers the four moves', () => {
+  assert.deepEqual(Object.keys(PSI_MANEUVERS), ['close', 'evade', 'hold', 'retreat']);
 });
 
 test('fighters do not get Damage Reduction', () => {
