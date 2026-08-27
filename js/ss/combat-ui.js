@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { SECTIONS } from './tables.js';
+import { SYSTEMS } from './systems.js';
 import { computeShip } from './ship.js';
 import { SS_PRESETS } from './presets.js';
 import { PSIWARS_PRESETS } from './presets-psiwars.js';
@@ -13,10 +14,11 @@ import {
   RANGE_LABELS, ROF, SCALES, SCALE_LABELS, SITUATIONS,
   TURN_LABELS, TURN_LENGTHS,
   applyHit, ballisticAttackMods, beamAttackMods, beamRangeCheck, beamStats,
-  combatantWeapons, conventionalWarhead, createCombatant, dodgeScore,
-  effectiveStats, fmtDice, missileSAcc, parseDice, psiAccelBonus, psiBeamMods,
-  psiCategory, psiManeuverContest, psiMissileMods, psiPointDefenseMods,
-  rangeBand, rollDice, squadronDamage, successRoll,
+  combatantWeapons, conventionalWarhead, createCombatant, damageSystem,
+  dodgeScore, effectiveStats, fmtDice, missileSAcc, parseDice, psiAccelBonus,
+  psiBeamMods, psiCategory, psiCollisionDice, psiHasArmorGap,
+  psiManeuverContest, psiMissileMods, psiPointDefenseMods, psiRepairRoll,
+  psiThreat, rangeBand, rollDice, squadronDamage, successRoll,
 } from './combat.js';
 import { initExplain, refreshExplain } from '../help-core.js';
 import { COMBAT_FIELD_HELP, COMBAT_OPTION_HELP, COMBAT_SECTION_HELP } from './help-combat.js';
@@ -35,8 +37,16 @@ const enc = {
 };
 const psi = () => enc.ruleset === 'psiwars';
 // Psi-Wars dogfighting state per combatant.
-const psiState = (c) => (c.psi ||= { engagedWith: null, advOver: null, adv: 0 });
+const psiState = (c) => (c.psi ||= { engagedWith: null, advOver: null, adv: 0, formation: '', morale: 'steady' });
+// Advantage carries across a formation: the whole wing benefits from the
+// best tail position any member holds on this target.
+function psiAdvantageVs(a, t) {
+  const f = psiState(a).formation;
+  const members = f ? enc.combatants.filter((x) => !x.destroyed && psiState(x).formation === f) : [a];
+  return members.reduce((best, m) => psiState(m).advOver === t.id ? Math.max(best, psiState(m).adv) : best, 0);
+}
 let attack = null; // pending attack state
+let fleshWound = null; // snapshot for the cinematic damage undo
 
 // --- Fleet management --------------------------------------------------------
 function addShip(design) {
@@ -115,10 +125,15 @@ function renderFleet() {
             title="Mook fighter wings act as one body: 1 = a single ship; 5 = a wing; 20 = a squadron">
         </label>
         <label>&nbsp;<small class="muted">${c.squadron?.size > 1 ? `${c.squadron.size} fighters — damage pools; every ${Math.ceil(c.dhp / 2)} penetration downs one` : `${PSI_CATEGORIES[psiCategory(c.design.sm)]}: ${psiCategory(c.design.sm) >= 1 ? 'halves all penetrating damage (DR 2)' : 'full damage; goes first in the round'}`}</small></label>
+        <label>Formation
+          <input type="text" data-formation="${ci}" value="${esc(psiState(c).formation || '')}" placeholder="— flying solo —"
+            title="Ships sharing a formation name fly as one wing: Advantage over a target is shared, and engaging one means engaging all">
+        </label>
+        ${repairControls(c, ci)}
       </div>
-      <p class="muted">Dogfight: accel bonus +${psiAccelBonus(s.accelG)}${psiState(c).engagedWith ? ` · engaged with ${esc(psiState(c).engagedWith)}` : ' · not engaged'}${psiState(c).advOver ? ` · <b>Advantaged +${psiState(c).adv} over ${esc(psiState(c).advOver)}</b>` : ''}</p>` : ''}
+      <p class="muted">Dogfight: accel bonus +${psiAccelBonus(s.accelG)}${psiState(c).engagedWith ? ` · engaged with ${esc(psiState(c).engagedWith)}` : ' · not engaged'}${psiState(c).advOver ? ` · <b>Advantaged +${psiState(c).adv} over ${esc(psiState(c).advOver)}</b>` : ''}${psiState(c).morale === 'cowed' ? ' · <b>cowed: fights defensively</b>' : psiState(c).morale === 'fleeing' ? ' · <b>FLEEING the battle</b>' : ''}</p>` : ''}
       <div class="dmg-grid">${SECTIONS.map((sec) => dmgRow(c, ci, sec)).join('')}</div>
-      <p class="muted dmg-hint">Click a system to cycle OK → disabled → destroyed. ⚠ = volatile.</p>
+      <p class="muted dmg-hint">Click a system to cycle OK → disabled → destroyed. ⚠ = volatile.${psi() ? ' ° = has an armor gap (can be targeted at -10, ignoring armor; disables at half damage).' : ''}</p>
     `;
     host.appendChild(card);
   });
@@ -164,11 +179,36 @@ function renderFleet() {
     c.squadron = n > 1 ? { size: n, pool: 0, lost: 0 } : null;
     renderFleet();
   }));
+  host.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('change', () => {
+    const c = enc.combatants[Number(el.dataset.formation)];
+    psiState(c).formation = el.value.trim();
+    if (psiState(c).formation) log(`${c.id} joins formation "${psiState(c).formation}" — shared Advantage; engaging one member engages them all.`);
+    renderFleet();
+  }));
+  host.querySelectorAll('[data-repair]').forEach((b) => b.addEventListener('click', () => {
+    const ci = Number(b.dataset.repair);
+    const c = enc.combatants[ci];
+    const sel = host.querySelector(`[data-repair-sel="${ci}"]`);
+    if (!sel?.value) return;
+    const [sec, idx] = sel.value.split(':');
+    const st = c.slots[sec][Number(idx)];
+    if (!st || st.state !== 'disabled') return;
+    const r = psiRepairRoll(c.gunnerSkill);
+    if (r.success) {
+      st.state = 'ok';
+      log(`${c.id} jury-rigs ${st.name} (skill ${c.gunnerSkill}-8, rolled ${r.dice}): back online after 3 turns of work!`);
+    } else {
+      st.norepair = true;
+      log(`${c.id} fails to jury-rig ${st.name} (skill ${c.gunnerSkill}-8, rolled ${r.dice}): it stays down for the rest of the fight.`);
+    }
+    renderAll();
+  }));
   host.querySelectorAll('[data-slot]').forEach((el) => el.addEventListener('click', () => {
     const [ci, sec, i] = el.dataset.slot.split(':');
     const st = enc.combatants[Number(ci)].slots[sec][Number(i)];
     if (!st) return;
     st.state = st.state === 'ok' ? 'disabled' : st.state === 'disabled' ? 'destroyed' : 'ok';
+    if (st.state === 'ok') delete st.norepair;
     renderAll();
   }));
 }
@@ -177,10 +217,32 @@ function dmgRow(c, ci, sec) {
   const cells = c.slots[sec].map((st, i) => {
     if (!st) return `<span class="dmg-cell empty" title="no core system">·</span>`;
     const label = i === 6 ? 'C' : String(i + 1);
-    const title = `${sec} ${i === 6 ? '[core]' : `[${i + 1}]`} ${st.name}${st.volatile ? ' (volatile)' : ''} — ${st.state}`;
-    return `<span class="dmg-cell ${st.state}${st.sys ? '' : ' empty'}" data-slot="${ci}:${sec}:${i}" title="${esc(title)}">${label}${st.volatile ? '⚠' : ''}</span>`;
+    const gap = psi() && st.sys && psiHasArmorGap(SYSTEMS[st.sys]);
+    const title = `${sec} ${i === 6 ? '[core]' : `[${i + 1}]`} ${st.name}${st.volatile ? ' (volatile)' : ''}${gap ? ' (armor gap: can be hit through a gap at -10, ignoring armor)' : ''} — ${st.state}`;
+    return `<span class="dmg-cell ${st.state}${st.sys ? '' : ' empty'}" data-slot="${ci}:${sec}:${i}" title="${esc(title)}">${label}${st.volatile ? '⚠' : ''}${gap ? '°' : ''}</span>`;
   }).join('');
   return `<div class="dmg-section"><span class="dmg-label">${sec[0].toUpperCase()}</span>${cells}</div>`;
+}
+
+// Jury-rig repairs (Psi-Wars): pick a disabled system, roll crew skill -8.
+function disabledSystems(c) {
+  const out = [];
+  for (const sec of SECTIONS) {
+    c.slots[sec].forEach((st, i) => {
+      if (st && st.sys && st.state === 'disabled' && !st.norepair) out.push({ sec, i, name: st.name });
+    });
+  }
+  return out;
+}
+function repairControls(c, ci) {
+  const down = disabledSystems(c);
+  if (!down.length) return '<label>&nbsp;<small class="muted">no disabled systems to jury-rig</small></label>';
+  return `<label>Jury-rig repair (3 turns, skill-8)
+    <span class="skill-pair">
+      <select data-repair-sel="${ci}">${down.map((d) => `<option value="${d.sec}:${d.i}">${esc(`${d.sec} [${d.i === 6 ? 'core' : d.i + 1}] ${d.name}`)}</option>`).join('')}</select>
+      <button class="btn" data-repair="${ci}" title="One attempt per system: a failure means it stays down for the rest of the fight">Roll</button>
+    </span>
+  </label>`;
 }
 
 // --- Psi-Wars dogfight card ----------------------------------------------------
@@ -188,7 +250,10 @@ function renderDogfight() {
   const host = $('dogfight');
   if (!host) return;
   if (!psi() || enc.combatants.length < 2) { host.innerHTML = ''; return; }
-  const prev = { m: $('df-mover')?.value, o: $('df-opponent')?.value, man: $('df-maneuver')?.value, s: $('df-stunt')?.value };
+  const prev = {
+    m: $('df-mover')?.value, o: $('df-opponent')?.value, man: $('df-maneuver')?.value,
+    s: $('df-stunt')?.value, intim: $('df-intim')?.value, will: $('df-will')?.value,
+  };
   const names = enc.combatants.map((c, i) => [String(i), c.id]);
   host.innerHTML = `
     <div class="card">
@@ -203,6 +268,14 @@ function renderDogfight() {
         <span id="df-note" class="muted" style="font-size:12.5px"></span>
         <button class="btn primary" id="btn-contest">Roll the contest</button>
       </div>
+      <div class="grid3" style="margin-top:6px">
+        <label>Commander's Intimidation <input type="number" id="df-intim" min="3" max="25" value="12"></label>
+        <label>Target crew's Will <input type="number" id="df-will" min="3" max="25" value="10"></label>
+        <label>&nbsp;<span class="skill-pair">
+          <button class="btn" id="btn-threat" title="Utter a threat over the comms: quick contest of Intimidation (+1 per size category you outclass them by) vs their Will">Issue threat</button>
+          <button class="btn" id="btn-ram" title="Deliberate collision: lowest dST in dice, each die at (-2 + best accel bonus, max +5); both ships take it, screens don't help">Ram!</button>
+        </span></label>
+      </div>
     </div>`;
   fillSelect($('df-mover'), names, prev.m ?? '0');
   fillSelect($('df-opponent'), names, prev.o ?? '1');
@@ -216,9 +289,61 @@ function renderDogfight() {
     const mb = psiAccelBonus(effectiveStats(m).accelG) * (man === 'evade' ? 2 : 1);
     $('df-note').textContent = `${m.id} Pilot ${m.pilotSkill}+${mb} vs ${o.id} Pilot ${o.pilotSkill}+${psiAccelBonus(effectiveStats(o).accelG)} — ${PSI_MANEUVERS[man].desc}.`;
   };
+  if (prev.intim) $('df-intim').value = prev.intim;
+  if (prev.will) $('df-will').value = prev.will;
   ['df-mover', 'df-opponent', 'df-maneuver', 'df-stunt'].forEach((id) => $(id).addEventListener('change', () => { note(); refreshExplain(); }));
   $('btn-contest').addEventListener('click', resolveDogfight);
+  $('btn-threat').addEventListener('click', resolveThreat);
+  $('btn-ram').addEventListener('click', resolveRam);
   note();
+}
+
+// Uttering Threats: a successful contest cows the target's crew; by 5+ they run.
+function resolveThreat() {
+  const m = enc.combatants[Number($('df-mover').value)];
+  const t = enc.combatants[Number($('df-opponent').value)];
+  if (!m || !t || m === t) return;
+  const r = psiThreat({
+    intimidation: Number($('df-intim').value) || 12,
+    moverSM: m.design.sm,
+    targetSM: t.design.sm,
+    targetWill: Number($('df-will').value) || 10,
+  });
+  log(`— ${m.id}'s commander hails ${t.id} with a threat: Intimidation ${$('df-intim').value}${r.sizeBonus ? `+${r.sizeBonus} (looming ${r.sizeBonus} size categor${r.sizeBonus > 1 ? 'ies' : 'y'} over them)` : ''} rolls ${r.atk.dice} vs Will ${$('df-will').value} rolls ${r.def.dice}.`);
+  if (r.result === 'fleeing') {
+    psiState(t).morale = 'fleeing';
+    log(`  ${t.id}'s crew breaks (beaten by ${r.by}): they turn and run for the jump point!`);
+  } else if (r.result === 'cowed') {
+    psiState(t).morale = 'cowed';
+    log(`  ${t.id}'s crew is cowed: they won't close or take offensive action this fight.`);
+  } else {
+    log(`  ${t.id}'s crew holds firm — the threat falls flat.`);
+  }
+  renderFleet();
+  refreshExplain();
+}
+
+// Deliberate collision: both ships take (lowest dST)d, screens bypassed.
+function resolveRam() {
+  const m = enc.combatants[Number($('df-mover').value)];
+  const t = enc.combatants[Number($('df-opponent').value)];
+  if (!m || !t || m === t) return;
+  const accel = Math.max(psiAccelBonus(effectiveStats(m).accelG), psiAccelBonus(effectiveStats(t).accelG));
+  const dice = psiCollisionDice(Math.min(m.dhp, t.dhp), accel);
+  const dmg = rollDice(dice);
+  log(`— ${m.id} RAMS ${t.id}: lowest dST ${Math.min(m.dhp, t.dhp)}, best accel bonus +${accel} → ${fmtDice(dice)} = ${dmg} to BOTH ships, straight through the force screens.`);
+  for (const ship of [t, m]) {
+    const dr = psi() && psiCategory(ship.design.sm) >= 1 ? 2 : 1;
+    const res = applyHit(ship, {
+      section: ship === m ? 'front' : ship.facing,
+      basicDamage: dmg, div: 1, damageReduction: dr, ignoreScreen: true,
+    });
+    log(`  ${ship.id}:`);
+    res.log.forEach((l) => log(`    ${l}`));
+    if (ship.destroyed) log(`  💥 ${ship.id} is destroyed in the collision!`);
+  }
+  renderFleet();
+  refreshExplain();
 }
 
 function resolveDogfight() {
@@ -259,6 +384,7 @@ function resolveDogfight() {
       }
       ms.engagedWith = o.id;
       log(`  ${m.id} is now engaged with ${o.id} — Close range (Engaged, -4).`);
+      if (psiState(o).formation) log(`  ${o.id} flies in formation "${psiState(o).formation}": engaging one member means ${m.id} is engaged with them all.`);
     } else if (man === 'evade') {
       if (ms.engagedWith === o.id) ms.engagedWith = null;
       if (os.engagedWith === m.id) { os.engagedWith = null; log(`  ${o.id} loses the engagement.`); }
@@ -277,6 +403,53 @@ function resolveDogfight() {
   renderFleet();
   renderDogfight();
   refreshExplain();
+}
+
+// --- Orbital bombardment (Psi-Wars) -------------------------------------------
+function renderBombard() {
+  const host = $('bombard');
+  if (!host) return;
+  if (!psi() || !enc.combatants.length) { host.innerHTML = ''; return; }
+  const prev = { s: $('bb-ship')?.value, w: $('bb-weapon')?.value, b: $('bb-beamtype')?.value };
+  host.innerHTML = `
+    <div class="card">
+      <h2>Orbital bombardment</h2>
+      <div class="grid3">
+        <label>Ship <select id="bb-ship"></select></label>
+        <label>Battery <select id="bb-weapon"></select></label>
+        <label>Beam type <select id="bb-beamtype"></select></label>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <span id="bb-note" class="muted" style="font-size:12.5px"></span>
+        <button class="btn" id="btn-bombard">Fire at the surface</button>
+      </div>
+    </div>`;
+  fillSelect($('bb-ship'), enc.combatants.map((c, i) => [String(i), c.id]), prev.s ?? '0');
+  const wireWeapons = () => {
+    const c = enc.combatants[Number($('bb-ship').value)];
+    const beams = c ? combatantWeapons(c).filter((w) => (w.opts.weaponType || 'beam') === 'beam') : [];
+    fillSelect($('bb-weapon'), beams.length ? beams.map((w, i) => [String(i), w.label]) : [['', '— no working beam batteries —']], prev.w);
+    $('bb-note').textContent = c ? `Gunner ${c.gunnerSkill} at -4; 20 seconds to line up the shot. The weapon must reach Long range.` : '';
+  };
+  fillSelect($('bb-beamtype'), Object.entries(BEAM_TYPES).map(([k, v]) => [k, v.name]), prev.b ?? 'laser');
+  wireWeapons();
+  $('bb-ship').addEventListener('change', () => { wireWeapons(); refreshExplain(); });
+  $('btn-bombard').addEventListener('click', () => {
+    const c = enc.combatants[Number($('bb-ship').value)];
+    if (!c) return;
+    const beams = combatantWeapons(c).filter((w) => (w.opts.weaponType || 'beam') === 'beam');
+    const w = beams[Number($('bb-weapon').value)];
+    if (!w) return;
+    const stats = beamStats(w.info.output, $('bb-beamtype').value);
+    const eff = c.gunnerSkill - 4;
+    const r = successRoll(eff);
+    if (!r.success) {
+      log(`— ${c.id} bombards the surface with ${w.entry.name} (Gunner ${c.gunnerSkill}-4): rolls ${r.dice}, misses by ${-r.margin} — the shot scatters ${-r.margin * 10} yards.`);
+      return;
+    }
+    const dmg = rollDice(stats.dice);
+    log(`— ${c.id} bombards the surface with ${w.entry.name} (Gunner ${c.gunnerSkill}-4): rolls ${r.dice}, HIT. ${fmtDice(stats.dice)} → ${dmg} dDamage = ${dmg * 5} HP of explosive damage on the ground (half the usual ×10 for punching down through atmosphere).`);
+  });
 }
 
 // --- Attack console ------------------------------------------------------------
@@ -420,7 +593,7 @@ function gatherAttack() {
       const mods = psiBeamMods({
         ...common, attackerSM: a.design.sm, sAcc: stats.sAcc, range, heavyWeapon,
         fixedMount: (w.opts.mount || 'turret') === 'fixed' || w.entry.spinal,
-        advantage: psiState(a).advOver === t.id ? psiState(a).adv : 0,
+        advantage: psiAdvantageVs(a, t),
         attackerZeroHP: a.curDhp <= 0,
       });
       return { a, t, w, kind, band: range, section, mods, shots, profile: { kind, stats, reach: 'full', band: range, section, shots, rcl: stats.rcl } };
@@ -565,7 +738,8 @@ function doDodge() {
     piloting: t.pilotSkill,
     hnd: effectiveStats(t).hnd ?? 0,
     turn: enc.turn,
-    ecm: computeEcm(t),
+    // Psi-Wars: ECM only helps against missiles (which use point defense here).
+    ecm: psi() ? 0 : computeEcm(t),
     evasive: t.maneuver === 'evasive',
   });
   const r = successRoll(ds.score);
@@ -586,6 +760,17 @@ function doDamage() {
   const { t, profile } = attack;
   // Psi-Wars: everything bigger than a fighter halves penetrating damage.
   const dr = psi() && psiCategory(t.design.sm) >= 1 && !(t.squadron?.size > 1) ? 2 : 1;
+  // Torpedoes are too large to thread an armor gap.
+  let gapAllowed = $('t-gap')?.checked;
+  if (gapAllowed && profile.kind === 'psiMissile' && PSI_MISSILES[profile.mKey].torpedo) {
+    gapAllowed = false;
+    log('Torpedoes cannot target armor gaps — resolving as a normal hit.');
+  }
+  // Snapshot for the cinematic Flesh Wound undo (spend 1 CP).
+  const snapshot = psi() ? JSON.stringify({
+    curDhp: t.curDhp, screen: t.screen, slots: t.slots,
+    destroyed: t.destroyed, htChecksAt: t.htChecksAt, squadron: t.squadron,
+  }) : null;
   for (let h = 1; h <= attack.hits; h++) {
     let dice;
     let div = 1;
@@ -631,7 +816,7 @@ function doDamage() {
       halfDamage: half,
       precisionSlot: $('t-precision')?.checked ? Number($('t-slot')?.value || 1) - 1 : null,
       weakPoint: $('t-weak')?.checked,
-      armorGap: $('t-gap')?.checked,
+      armorGap: gapAllowed,
       damageReduction: dr,
     });
     res.log.forEach((l) => log(`  ${l}`));
@@ -641,6 +826,30 @@ function doDamage() {
   $('btn-damage').disabled = true;
   $('btn-dodge').disabled = true;
   $('atk-status').textContent = 'Damage applied.';
+  // Offer the Flesh Wound undo if the target actually got hurt.
+  if (snapshot && JSON.parse(snapshot).curDhp > t.curDhp) {
+    fleshWound = { t, snapshot, section: profile.section };
+    $('btn-flesh').style.display = '';
+  } else {
+    fleshWound = null;
+    if ($('btn-flesh')) $('btn-flesh').style.display = 'none';
+  }
+  renderFleet();
+}
+
+// Flesh Wound (Psi-Wars): spend a character point — the hit becomes a graze
+// worth 10% of dHP and one disabled system, whatever the dice said.
+function doFleshWound() {
+  if (!fleshWound) return;
+  const { t, snapshot, section } = fleshWound;
+  Object.assign(t, JSON.parse(snapshot));
+  const graze = Math.ceil(t.dhp * 0.1);
+  t.curDhp -= graze;
+  const lines = damageSystem(t, section, Math.floor(Math.random() * 6), 'disable');
+  log(`— ${t.id} spends a character point: "just a flesh wound!" Damage rewound to ${graze} (10% of dHP).`);
+  lines.forEach((l) => log(`  ${l}`));
+  fleshWound = null;
+  $('btn-flesh').style.display = 'none';
   renderFleet();
 }
 
@@ -722,6 +931,7 @@ function flash(msg) {
 function renderAll() {
   renderFleet();
   renderDogfight();
+  renderBombard();
   renderAttackSelectors();
   renderToggles();
   renderMods();
@@ -778,6 +988,7 @@ function initToolbar() {
   $('btn-attack').addEventListener('click', doAttack);
   $('btn-dodge').addEventListener('click', doDodge);
   $('btn-damage').addEventListener('click', doDamage);
+  $('btn-flesh').addEventListener('click', doFleshWound);
   $('btn-copy-log').addEventListener('click', () => {
     navigator.clipboard.writeText([...$('log').children].map((x) => x.textContent).join('\n')).then(() => flash('Log copied.'));
   });

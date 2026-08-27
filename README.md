@@ -127,8 +127,16 @@ resolved as quick contests of Pilot skill (+1 per 25G of acceleration,
 doubled when evading), optional stunts (-2 to -10 for +1 per -2, with drifts
 and wrecked engines on a miss), engagement and Advantaged status tracked on
 each ship card (up to +4 on the tail), and gunnery **point defense** against
-inbound missiles (see `tests/ss-psiwars.test.mjs`; the Tiger Manticore
-computes to its published $746.6M exactly). Psi-Wars is a fan creation by
+inbound missiles. Rounding out the ruleset: **formations** (shared Advantage,
+engaging one member engages the wing), **ramming** ((lowest dST)d damage to
+both ships, straight through force screens), commanders **uttering threats**
+(Intimidation vs Will, +1 per size category — cow them or rout them),
+**jury-rig repairs** (crew skill -8, one shot per system), the cinematic
+**Flesh Wound** undo (1 CP turns a mauling into a graze), **orbital
+bombardment** (-4, five times dDamage on the ground), armor-gap markers on
+every damage grid showing exactly which systems can be gap-targeted, and
+torpedoes correctly barred from gap shots (see `tests/ss-psiwars.test.mjs`;
+the Tiger Manticore computes to its published $746.6M exactly). Psi-Wars is a fan creation by
 Mailanka; no setting text is reproduced — mechanics only.
 
 Every page has an **Explain mode** (on by default): plain-English notes under

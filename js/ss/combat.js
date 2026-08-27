@@ -328,13 +328,15 @@ export function effectiveStats(c) {
 // --- Damage pipeline ------------------------------------------------------------
 // Resolve one hit: basic damage → screen → armor → penetration → hull damage.
 // Returns a log (array of strings) and mutates the combatant.
-export function applyHit(c, { section, basicDamage, div = 1, halfDamage = false, rng = Math.random, precisionSlot = null, weakPoint = false, armorGap = false, damageReduction = 1 }) {
+export function applyHit(c, { section, basicDamage, div = 1, halfDamage = false, rng = Math.random, precisionSlot = null, weakPoint = false, armorGap = false, damageReduction = 1, ignoreScreen = false }) {
   const log = [];
   let dmg = basicDamage;
   if (halfDamage) { dmg = Math.floor(dmg / 2); log.push(`half-damage range: basic damage ${dmg}`); }
+  // Psi-Wars collisions bypass force screens entirely.
+  if (ignoreScreen && c.screen > 0) log.push('collision: force screen bypassed');
 
   // 1. Force screen (semi-ablative: -1 dDR per 10 basic damage rolled).
-  if (c.screen > 0) {
+  if (c.screen > 0 && !ignoreScreen) {
     const eff = div === Infinity ? 0 : Math.floor(c.screen / div);
     const stop = Math.min(dmg, eff);
     dmg -= stop;
@@ -527,6 +529,7 @@ export function psiMissileMods(p) {
   if (p.tacticalArray) add(2, 'tactical array');
   if (p.streamlinedEnd) add(-1, 'streamlined front/rear hull');
   if (p.precision) add(-5, 'precision attack');
+  if (p.armorGap && !p.torpedo) add(-10, 'armor gap'); // torpedoes are too big for gaps
   if (p.weakPoint) add(-10, 'armor weak point');
   if (p.shots >= 2) add(rapidFireBonus(p.shots), `${p.shots} shots`);
   return mods;
@@ -587,6 +590,43 @@ export function psiPointDefenseMods({ mKey, firedFrom, defenderSM, heavyWeapon =
   if (cat > 0) add(-(heavyWeapon ? 2 : 1) * cat, `${heavyWeapon ? 'heavy' : 'light'} weapon tracking a missile`);
   add(firedFrom === 'neutral' ? 4 : firedFrom === 'engaged' ? 2 : 0, 'flight time (fired from range)');
   return mods;
+}
+
+// Psi-Wars armor gaps exist on specific exposed systems (everything with
+// intakes, emitters, or moving parts); everything else only has weak points.
+export function psiHasArmorGap(entry) {
+  if (!entry) return false;
+  if (entry.battery || entry.spinal) return true; // all weapon systems
+  if (entry.category === 'Engines') return true; // reaction & reactionless drives, jets, ramscoops
+  return ['defensiveECM', 'enhancedArray', 'tacticalArray', 'scienceArray',
+    'multipurposeArray', 'forceScreenLight', 'forceScreenHeavy', 'robotArm'].includes(entry.key);
+}
+
+// Psi-Wars collision: lowest dST in dice, each die at (-2 + best accel
+// bonus, max +5). An ST-200 ship rammed at accel bonus +1 deals 200d-200.
+// Collision damage ignores force screens.
+export function psiCollisionDice(lowestDst, accelBonus) {
+  const perDie = Math.min(-2 + accelBonus, 5);
+  return { n: lowestDst, add: lowestDst * perDie, mult: 1, perDie };
+}
+
+// Uttering Threats in space (Action p. 39 adapted): a quick contest of the
+// commander's Intimidation (+1 per size category over the target) against
+// the target crew's Will. Win: they turn defensive. Win by 5+: they run.
+export function psiThreat({ intimidation, moverSM, targetSM, targetWill = 10, rng = Math.random }) {
+  const sizeBonus = Math.max(0, psiCategory(moverSM) - psiCategory(targetSM));
+  const atk = successRoll(intimidation + sizeBonus, rng);
+  const def = successRoll(targetWill, rng);
+  const won = atk.success && (!def.success || atk.margin > def.margin);
+  const by = atk.margin - def.margin;
+  const result = !won ? 'unmoved' : by >= 5 ? 'fleeing' : 'cowed';
+  return { atk, def, sizeBonus, won, by, result };
+}
+
+// Jury-rig repairs: one attempt per system, 3 combat turns, at crew skill -8.
+// A failed roll means that system stays down for the rest of the fight.
+export function psiRepairRoll(crewSkill, rng = Math.random) {
+  return successRoll(crewSkill - 8, rng);
 }
 
 // Squadron damage (mook fighter wings): sum penetrating damage in a pool;

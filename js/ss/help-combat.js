@@ -28,6 +28,11 @@ export const COMBAT_FIELD_HELP = {
   'df-opponent': 'The ship being outflown. It resists with its own Pilot skill and acceleration bonus.',
   'df-maneuver': 'What the mover is trying to do. Each maneuver is a quick contest of Pilot skill: both roll, higher margin of success wins.',
   'df-stunt': 'A flashy second Pilot roll before the contest — threading an asteroid gap, skimming a hull. Every -2 of risk adds +1 to the contest if it works; failing puts you in an uncontrolled drift (or wrecks the engines on a bad failure).',
+  'df-intim': 'The commanding officer\'s Intimidation skill, for hailing the enemy with a threat. Looming over a smaller ship helps: +1 per size category you outclass them by.',
+  'df-will': 'The enemy crew\'s Will. Beat it and they fight defensively; beat it by 5 or more and they break and run.',
+  'bb-ship': 'The ship in orbit doing the shooting. Its Gunner skill applies at -4, and lining up the shot takes 20 seconds.',
+  'bb-weapon': 'Which beam battery fires at the surface. Only weapons that can reach Long range can bombard from orbit.',
+  'bb-beamtype': 'The beam type sets the damage dice. Ground damage is five times the rolled dDamage, delivered as an explosion.',
 };
 
 export const COMBAT_OPTION_HELP = {
@@ -85,9 +90,10 @@ export const COMBAT_OPTION_HELP = {
 };
 
 export const COMBAT_SECTION_HELP = {
-  Dogfight: 'Psi-Wars flying is a duel of Pilot skill. Pick who is making a move and against whom, choose the maneuver (add a stunt if you dare), and roll the contest — engagement and Advantaged status update on the ship cards, and being on someone\'s tail stacks up to +4 to hit.',
+  Dogfight: 'Psi-Wars flying is a duel of Pilot skill. Pick who is making a move and against whom, choose the maneuver (add a stunt if you dare), and roll the contest — engagement and Advantaged status update on the ship cards, and being on someone\'s tail stacks up to +4 to hit. The second row is for drama: a commander can Issue a Threat to break the enemy\'s nerve, or you can simply Ram them — both ships take (lowest dST)d damage, and force screens do not help.',
+  'Orbital bombardment': 'Blasting the planet you are fighting over: any beam that reaches Long range can fire at the surface at -4 after 20 seconds of lining up. A hit lands five times its rolled dDamage as an explosion; a miss scatters 10 yards per point it missed by.',
   Encounter: 'Set the stage first: pick the combat scale and turn length (and the ruleset, if your table uses Psi-Wars). Then add ships from the toolbar above — presets, saved designs, or imported JSON.',
-  Attack: 'Resolving fire takes three steps, just like at the table: (1) Roll attack — gunner skill plus every modifier below. (2) The target may dodge to shake off hits. (3) Roll damage & apply — armor soaks, the rest penetrates, and damaged systems shut down automatically on each ship\'s card.',
+  Attack: 'Resolving fire takes three steps, just like at the table: (1) Roll attack — gunner skill plus every modifier below. (2) The target may dodge (or, against Psi-Wars missiles, roll point defense) to shake off hits. (3) Roll damage & apply — armor soaks, the rest penetrates, and damaged systems shut down automatically on each ship\'s card. In Psi-Wars, a player-character ship that just got mauled can spend a character point on a Flesh Wound to shrug it off as a graze.',
   'Combat log': 'A running record of every roll, hit, and system knocked out — copy it into your session notes when the dust settles.',
   'Tactical range calculator': 'For groups playing on a hex map (GURPS Spaceships 3) instead of abstract range bands: convert hex distance into the to-hit range modifier.',
 };

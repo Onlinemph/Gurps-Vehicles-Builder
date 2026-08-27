@@ -10,8 +10,10 @@ import { PSIWARS_PRESETS } from '../js/ss/presets-psiwars.js';
 import {
   PSI_CATEGORIES, PSI_MANEUVERS, PSI_MISSILES, PSI_RANGES,
   applyHit, createCombatant, psiAccelBonus, psiBeamMods, psiCategory,
-  psiManeuverContest, psiMissileMods, psiPointDefenseMods, squadronDamage,
+  psiCollisionDice, psiHasArmorGap, psiManeuverContest, psiMissileMods,
+  psiPointDefenseMods, psiRepairRoll, psiThreat, squadronDamage,
 } from '../js/ss/combat.js';
+import { SYSTEMS } from '../js/ss/systems.js';
 
 const rngQueue = (...faces) => {
   const q = faces.map((f) => (f - 1) / 6 + 0.001);
@@ -262,6 +264,62 @@ test('psiPointDefenseMods: pd penalty, missile-as-fighter tracking, flight-time 
 
 test('PSI_MANEUVERS covers the four moves', () => {
   assert.deepEqual(Object.keys(PSI_MANEUVERS), ['close', 'evade', 'hold', 'retreat']);
+});
+
+// --- Collisions, threats, repairs, armor-gap list ----------------------------
+
+test('psiCollisionDice matches the book example: ST 200 at accel +1 → 200d-200', () => {
+  const d = psiCollisionDice(200, 1);
+  assert.equal(d.n, 200);
+  assert.equal(d.add, -200);
+  // Per-die bonus caps at +5 no matter how hot the burn.
+  assert.equal(psiCollisionDice(100, 12).add, 500);
+});
+
+test('applyHit ignoreScreen: collisions bypass force screens', () => {
+  const c = frigate(); // screen 100, front armor 100, dHP 100
+  const before = c.screen;
+  const res = applyHit(c, {
+    section: 'front', basicDamage: 150, div: 1, rng: rngQueue(4),
+    ignoreScreen: true, damageReduction: 2,
+  });
+  assert.equal(c.screen, before); // untouched, not even ablated
+  // 150 - 100 armor = 50, halved by DR 2 → 25.
+  assert.equal(res.penetrating, 25);
+});
+
+test('psiThreat: bigger ships loom, big wins rout the enemy', () => {
+  // Dreadnought (SM 13) threatening a corvette (SM 9): +2 size bonus.
+  // Intimidation 12+2 rolls 6 (margin 8) vs Will 10 rolls 13 (margin -3) → by 11 → fleeing.
+  const r = psiThreat({ intimidation: 12, moverSM: 13, targetSM: 9, targetWill: 10, rng: rngQueue(2, 2, 2, 5, 4, 4) });
+  assert.equal(r.sizeBonus, 2);
+  assert.equal(r.result, 'fleeing');
+  // A smaller ship gets no size bonus threatening a bigger one.
+  assert.equal(psiThreat({ intimidation: 12, moverSM: 4, targetSM: 13, rng: rngQueue(4, 4, 4, 4, 4, 4) }).sizeBonus, 0);
+});
+
+test('psiRepairRoll is crew skill -8', () => {
+  // Skill 12 - 8 = 4: rolling 4 succeeds, 5 fails.
+  assert.equal(psiRepairRoll(12, rngQueue(1, 1, 2)).success, true);
+  assert.equal(psiRepairRoll(12, rngQueue(1, 2, 2)).success, false);
+});
+
+test('psiHasArmorGap follows the published system list', () => {
+  assert.equal(psiHasArmorGap(SYSTEMS.defensiveECM), true);
+  assert.equal(psiHasArmorGap(SYSTEMS.tacticalArray), true);
+  assert.equal(psiHasArmorGap(SYSTEMS.forceScreenHeavy), true);
+  assert.equal(psiHasArmorGap(SYSTEMS.superFusionTorch), true); // engines
+  assert.equal(psiHasArmorGap(SYSTEMS.battery_major), true); // all weapons
+  assert.equal(psiHasArmorGap(SYSTEMS.habitat), false);
+  assert.equal(psiHasArmorGap(SYSTEMS.cargoHold), false);
+  assert.equal(psiHasArmorGap(SYSTEMS.controlRoom), false);
+});
+
+test('psiMissileMods: missiles may target gaps, torpedoes may not', () => {
+  const missile = psiMissileMods({ targetSM: 9, attackerSM: 9, torpedo: false, armorGap: true, shots: 1 });
+  assert.ok(missile.some(([v, l]) => v === -10 && /armor gap/.test(l)));
+  const torpedo = psiMissileMods({ targetSM: 9, attackerSM: 9, torpedo: true, armorGap: true, shots: 1 });
+  assert.ok(!torpedo.some(([, l]) => /armor gap/.test(l)));
 });
 
 test('fighters do not get Damage Reduction', () => {
