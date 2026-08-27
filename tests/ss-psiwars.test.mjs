@@ -8,10 +8,11 @@ import assert from 'node:assert/strict';
 import { computeShip } from '../js/ss/ship.js';
 import { PSIWARS_PRESETS } from '../js/ss/presets-psiwars.js';
 import {
-  PSI_CATEGORIES, PSI_MANEUVERS, PSI_MISSILES, PSI_RANGES,
+  CREW_QUALITY, PSI_CATEGORIES, PSI_MANEUVERS, PSI_MISSILES, PSI_RANGES,
   applyHit, createCombatant, psiAccelBonus, psiBeamMods, psiCategory,
-  psiCollisionDice, psiHasArmorGap, psiManeuverContest, psiMissileMods,
-  psiPointDefenseMods, psiRepairRoll, psiThreat, squadronDamage,
+  psiCollisionDice, psiHasArmorGap, psiInspire, psiManeuverContest,
+  psiMissileMods, psiPointDefenseMods, psiRepairRoll, psiTacticsContest,
+  psiThreat, psiTurnOrder, squadronDamage,
 } from '../js/ss/combat.js';
 import { SYSTEMS } from '../js/ss/systems.js';
 
@@ -320,6 +321,58 @@ test('psiMissileMods: missiles may target gaps, torpedoes may not', () => {
   assert.ok(missile.some(([v, l]) => v === -10 && /armor gap/.test(l)));
   const torpedo = psiMissileMods({ targetSM: 9, attackerSM: 9, torpedo: true, armorGap: true, shots: 1 });
   assert.ok(!torpedo.some(([, l]) => /armor gap/.test(l)));
+});
+
+// --- Command layer: crews, initiative, tactics, inspiration ------------------
+
+test('CREW_QUALITY has the published Will and cost values', () => {
+  assert.equal(CREW_QUALITY[10].will, 10);
+  assert.equal(CREW_QUALITY[12].will, 11);
+  assert.equal(CREW_QUALITY[15].will, 12);
+  assert.equal(CREW_QUALITY[18].will, 14);
+  assert.equal(CREW_QUALITY[10].costMult, 0.5);
+  assert.equal(CREW_QUALITY[18].costMult, 5);
+});
+
+test('psiTurnOrder: fighters and corvettes act before capitals, best pilot first', () => {
+  const order = psiTurnOrder([
+    { id: 'Dread', sm: 13, pilotSkill: 18 },
+    { id: 'Ace', sm: 4, pilotSkill: 15 },
+    { id: 'Capital', sm: 10, pilotSkill: 14 },
+    { id: 'Corvette', sm: 9, pilotSkill: 12 },
+  ]).map((s) => s.id);
+  assert.deepEqual(order, ['Ace', 'Corvette', 'Dread', 'Capital']);
+});
+
+test('psiTacticsContest: modes and psi bonuses shift effective skill', () => {
+  // A: 12 desperate (+2) + precog (+4) = 18; B: 12 cunning first use (-3) = 9.
+  // A rolls 10 (margin 8), B rolls 12 (margin -3): A wins, pool 8.
+  const res = psiTacticsContest({
+    aSkill: 12, bSkill: 12, aMode: 'desperate', bMode: 'cunning',
+    aPrecog: true, rng: rngQueue(3, 3, 4, 4, 4, 4),
+  });
+  assert.equal(res.aEff, 18);
+  assert.equal(res.bEff, 9);
+  assert.equal(res.winner, 'a');
+  assert.equal(res.pool, 8);
+});
+
+test('psiTacticsContest: cunning doubles the pool and repeats get harder', () => {
+  // A: 12 cunning, second use: -3 -2 = 7... rolls 5 (margin 2); B: 10 rolls 14 (fail).
+  const res = psiTacticsContest({
+    aSkill: 12, bSkill: 10, aMode: 'cunning', aCunningUses: 1,
+    rng: rngQueue(1, 2, 2, 5, 5, 4),
+  });
+  assert.equal(res.aEff, 7);
+  assert.equal(res.winner, 'a');
+  assert.equal(res.pool, 4); // margin 2, doubled
+});
+
+test('psiInspire needs success by 5+', () => {
+  // Leadership 14 rolling 9 → margin 5 → inspired.
+  assert.equal(psiInspire(14, rngQueue(3, 3, 3)).inspired, true);
+  // Leadership 12 rolling 9 → margin 3 → not enough.
+  assert.equal(psiInspire(12, rngQueue(3, 3, 3)).inspired, false);
 });
 
 test('fighters do not get Damage Reduction', () => {

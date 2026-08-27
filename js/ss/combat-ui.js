@@ -13,12 +13,14 @@ import {
   PSI_CATEGORIES, PSI_MANEUVERS, PSI_MISSILES, PSI_RANGES,
   RANGE_LABELS, ROF, SCALES, SCALE_LABELS, SITUATIONS,
   TURN_LABELS, TURN_LENGTHS,
+  CREW_QUALITY,
   applyHit, ballisticAttackMods, beamAttackMods, beamRangeCheck, beamStats,
   combatantWeapons, conventionalWarhead, createCombatant, damageSystem,
   dodgeScore, effectiveStats, fmtDice, missileSAcc, parseDice, psiAccelBonus,
   psiBeamMods, psiCategory, psiCollisionDice, psiHasArmorGap,
-  psiManeuverContest, psiMissileMods, psiPointDefenseMods, psiRepairRoll,
-  psiThreat, rangeBand, rollDice, squadronDamage, successRoll,
+  psiInspire, psiManeuverContest, psiMissileMods, psiPointDefenseMods,
+  psiRepairRoll, psiTacticsContest, psiThreat, psiTurnOrder, rangeBand,
+  rollDice, squadronDamage, successRoll,
 } from './combat.js';
 import { initExplain, refreshExplain } from '../help-core.js';
 import { COMBAT_FIELD_HELP, COMBAT_OPTION_HELP, COMBAT_SECTION_HELP } from './help-combat.js';
@@ -114,10 +116,10 @@ function renderFleet() {
       <div class="grid3" style="margin-top:6px">
         <label>Crew quality
           <span class="skill-pair">
-            <button class="btn" data-crew="${ci}:10" title="Green crews: skill 10, half cost">G</button>
-            <button class="btn" data-crew="${ci}:12" title="Basic crews: skill 12, standard">B</button>
-            <button class="btn" data-crew="${ci}:15" title="Superior training: skill 15, double cost">S</button>
-            <button class="btn" data-crew="${ci}:18" title="Elite: skill 18, five times cost">E</button>
+            <button class="btn" data-crew="${ci}:10" title="Green crews: skill 10, Will 10, half cost">G</button>
+            <button class="btn" data-crew="${ci}:12" title="Basic crews: skill 12, Will 11, standard">B</button>
+            <button class="btn" data-crew="${ci}:15" title="Superior training: skill 15, Will 12, double cost">S</button>
+            <button class="btn" data-crew="${ci}:18" title="Elite: skill 18, Will 14, five times cost">E</button>
           </span>
         </label>
         <label>Squadron (${PSI_CATEGORIES[psiCategory(c.design.sm)]})
@@ -131,7 +133,7 @@ function renderFleet() {
         </label>
         ${repairControls(c, ci)}
       </div>
-      <p class="muted">Dogfight: accel bonus +${psiAccelBonus(s.accelG)}${psiState(c).engagedWith ? ` · engaged with ${esc(psiState(c).engagedWith)}` : ' · not engaged'}${psiState(c).advOver ? ` · <b>Advantaged +${psiState(c).adv} over ${esc(psiState(c).advOver)}</b>` : ''}${psiState(c).morale === 'cowed' ? ' · <b>cowed: fights defensively</b>' : psiState(c).morale === 'fleeing' ? ' · <b>FLEEING the battle</b>' : ''}</p>` : ''}
+      <p class="muted">Dogfight: accel bonus +${psiAccelBonus(s.accelG)}${psiState(c).engagedWith ? ` · engaged with ${esc(psiState(c).engagedWith)}` : ' · not engaged'}${psiState(c).advOver ? ` · <b>Advantaged +${psiState(c).adv} over ${esc(psiState(c).advOver)}</b>` : ''}${psiState(c).morale === 'cowed' ? ' · <b>cowed: fights defensively</b>' : psiState(c).morale === 'fleeing' ? ' · <b>FLEEING the battle</b>' : ''}${psiState(c).tacticsPool > 0 ? ` · tactics pool ${psiState(c).tacticsPool} <button class="btn" data-pool="${ci}" title="Spend one +1 from the commander's plan on any roll this ship makes">spend +1</button>` : ''}${psiState(c).inspired ? ` · <b>inspired: crew at +1 this turn</b> <button class="btn" data-uninspire="${ci}" title="The turn ends: the rousing speech wears off">end</button>` : ''}</p>` : ''}
       <div class="dmg-grid">${SECTIONS.map((sec) => dmgRow(c, ci, sec)).join('')}</div>
       <p class="muted dmg-hint">Click a system to cycle OK → disabled → destroyed. ⚠ = volatile.${psi() ? ' ° = has an armor gap (can be targeted at -10, ignoring armor; disables at half damage).' : ''}</p>
     `;
@@ -170,13 +172,25 @@ function renderFleet() {
     const c = enc.combatants[ci];
     c.pilotSkill = skill;
     c.gunnerSkill = skill;
-    log(`${c.id} crew set to skill ${skill}.`);
-    renderFleet();
+    c.crewWill = CREW_QUALITY[skill]?.will ?? 11;
+    log(`${c.id} crew set to ${CREW_QUALITY[skill]?.label ?? ''} (skill ${skill}, Will ${c.crewWill}).`);
+    renderAll();
   }));
   host.querySelectorAll('[data-squad]').forEach((el) => el.addEventListener('change', () => {
     const c = enc.combatants[Number(el.dataset.squad)];
     const n = Math.max(1, Math.floor(Number(el.value) || 1));
     c.squadron = n > 1 ? { size: n, pool: 0, lost: 0 } : null;
+    renderFleet();
+  }));
+  host.querySelectorAll('[data-pool]').forEach((b) => b.addEventListener('click', () => {
+    const c = enc.combatants[Number(b.dataset.pool)];
+    psiState(c).tacticsPool -= 1;
+    log(`${c.id} spends +1 from the tactics pool (${psiState(c).tacticsPool} left) — apply it to any one roll.`);
+    renderFleet();
+  }));
+  host.querySelectorAll('[data-uninspire]').forEach((b) => b.addEventListener('click', () => {
+    const c = enc.combatants[Number(b.dataset.uninspire)];
+    psiState(c).inspired = false;
     renderFleet();
   }));
   host.querySelectorAll('[data-formation]').forEach((el) => el.addEventListener('change', () => {
@@ -193,13 +207,16 @@ function renderFleet() {
     const [sec, idx] = sel.value.split(':');
     const st = c.slots[sec][Number(idx)];
     if (!st || st.state !== 'disabled') return;
-    const r = psiRepairRoll(c.gunnerSkill);
+    const sup = psiState(c).supervised || 0;
+    const r = psiRepairRoll(c.gunnerSkill + sup);
+    const supNote = sup ? ` +${sup} supervised` : '';
+    if (sup) psiState(c).supervised = 0; // the commander's coordination is spent
     if (r.success) {
       st.state = 'ok';
-      log(`${c.id} jury-rigs ${st.name} (skill ${c.gunnerSkill}-8, rolled ${r.dice}): back online after 3 turns of work!`);
+      log(`${c.id} jury-rigs ${st.name} (skill ${c.gunnerSkill}-8${supNote}, rolled ${r.dice}): back online after 3 turns of work!`);
     } else {
       st.norepair = true;
-      log(`${c.id} fails to jury-rig ${st.name} (skill ${c.gunnerSkill}-8, rolled ${r.dice}): it stays down for the rest of the fight.`);
+      log(`${c.id} fails to jury-rig ${st.name} (skill ${c.gunnerSkill}-8${supNote}, rolled ${r.dice}): it stays down for the rest of the fight.`);
     }
     renderAll();
   }));
@@ -292,6 +309,11 @@ function renderDogfight() {
   if (prev.intim) $('df-intim').value = prev.intim;
   if (prev.will) $('df-will').value = prev.will;
   ['df-mover', 'df-opponent', 'df-maneuver', 'df-stunt'].forEach((id) => $(id).addEventListener('change', () => { note(); refreshExplain(); }));
+  // Threats resist with the target crew's Will — follow the crew quality.
+  $('df-opponent').addEventListener('change', () => {
+    const o = enc.combatants[Number($('df-opponent').value)];
+    if (o) $('df-will').value = o.crewWill ?? 11;
+  });
   $('btn-contest').addEventListener('click', resolveDogfight);
   $('btn-threat').addEventListener('click', resolveThreat);
   $('btn-ram').addEventListener('click', resolveRam);
@@ -402,6 +424,118 @@ function resolveDogfight() {
   }
   renderFleet();
   renderDogfight();
+  refreshExplain();
+}
+
+// --- Psi-Wars command & initiative card ----------------------------------------
+function renderCommand() {
+  const host = $('command');
+  if (!host) return;
+  if (!psi() || enc.combatants.length < 2) { host.innerHTML = ''; return; }
+  const prev = {
+    a: $('cmd-a')?.value, b: $('cmd-b')?.value,
+    at: $('cmd-a-skill')?.value, bt: $('cmd-b-skill')?.value,
+    am: $('cmd-a-mode')?.value, bm: $('cmd-b-mode')?.value,
+    lead: $('cmd-lead')?.value,
+    precog: $('cmd-precog')?.checked, telepath: $('cmd-telepath')?.checked,
+  };
+  const order = psiTurnOrder(enc.combatants.filter((c) => !c.destroyed).map((c) => ({ id: c.id, sm: c.design.sm, pilotSkill: c.pilotSkill })));
+  const names = enc.combatants.map((c, i) => [String(i), c.id]);
+  const modes = [['normal', 'Straight Tactics'], ['desperate', 'Desperate (+2, weaker defenses)'], ['cunning', 'Cunning (-3, double winnings)']];
+  host.innerHTML = `
+    <div class="card">
+      <h2>Command (Psi-Wars)</h2>
+      <p class="muted">Turn order: ${order.map((s, i) => `${i + 1}. ${esc(s.id)} (${PSI_CATEGORIES[psiCategory(s.sm)]})`).join(' · ')}</p>
+      <div class="grid2">
+        <label>Your commander's ship <select id="cmd-a"></select></label>
+        <label>Enemy commander's ship <select id="cmd-b"></select></label>
+        <label>Your Tactics
+          <span class="skill-pair">
+            <input type="number" id="cmd-a-skill" min="3" max="25" value="${prev.at ?? 12}">
+            <select id="cmd-a-mode"></select>
+          </span>
+        </label>
+        <label>Enemy Tactics
+          <span class="skill-pair">
+            <input type="number" id="cmd-b-skill" min="3" max="25" value="${prev.bt ?? 12}">
+            <select id="cmd-b-mode"></select>
+          </span>
+        </label>
+      </div>
+      <div class="acc-list">
+        <label class="acc-row"><input type="checkbox" id="cmd-precog" ${prev.precog ? 'checked' : ''}> <span><small>Precognitive commander (+4 Tactics: Prognostication or Visions of the battle)</small></span></label>
+        <label class="acc-row"><input type="checkbox" id="cmd-telepath" ${prev.telepath ? 'checked' : ''}> <span><small>Telepath reading the enemy commander (+2 Tactics via Telereceive)</small></span></label>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start">
+        <button class="btn primary" id="btn-tactics">Contest of Tactics</button>
+        <label style="display:inline-flex; align-items:center; gap:6px">Leadership
+          <input type="number" id="cmd-lead" min="3" max="25" value="${prev.lead ?? 12}" style="width:56px"></label>
+        <button class="btn" id="btn-inspire">Inspire the crew</button>
+        <button class="btn" id="btn-supervise">Supervise damage control</button>
+      </div>
+    </div>`;
+  fillSelect($('cmd-a'), names, prev.a ?? '0');
+  fillSelect($('cmd-b'), names, prev.b ?? '1');
+  fillSelect($('cmd-a-mode'), modes, prev.am ?? 'normal');
+  fillSelect($('cmd-b-mode'), modes, prev.bm ?? 'normal');
+  $('btn-tactics').addEventListener('click', resolveTactics);
+  $('btn-inspire').addEventListener('click', () => {
+    const c = enc.combatants[Number($('cmd-a').value)];
+    if (!c) return;
+    const r = psiInspire(Number($('cmd-lead').value) || 12);
+    if (r.inspired) {
+      psiState(c).inspired = true;
+      log(`— ${c.id}'s commander rallies the crew (Leadership, rolled ${r.roll.dice}, made it by ${r.roll.margin}): every nameless crewman fights at +1 this turn!`);
+    } else {
+      log(`— ${c.id}'s commander tries a rousing speech (Leadership, rolled ${r.roll.dice}): ${r.roll.success ? 'a solid effort, but it takes success by 5+ to lift the whole crew' : 'it falls flat'}.`);
+    }
+    renderFleet();
+    refreshExplain();
+  });
+  $('btn-supervise').addEventListener('click', () => {
+    const c = enc.combatants[Number($('cmd-a').value)];
+    if (!c) return;
+    const r = successRoll(Number($('cmd-lead').value) || 12);
+    if (r.success) {
+      psiState(c).supervised = r.critSuccess ? 2 : 1;
+      log(`— ${c.id}'s commander coordinates damage control (Leadership, rolled ${r.dice})${r.critSuccess ? ' critically' : ''}: the next jury-rig roll is at +${psiState(c).supervised}.`);
+    } else {
+      log(`— ${c.id}'s commander gets underfoot in engineering (Leadership, rolled ${r.dice}): no bonus.`);
+    }
+    renderFleet();
+    refreshExplain();
+  });
+}
+
+function resolveTactics() {
+  const a = enc.combatants[Number($('cmd-a').value)];
+  const b = enc.combatants[Number($('cmd-b').value)];
+  if (!a || !b || a === b) return;
+  const sa = psiState(a);
+  const sb = psiState(b);
+  const aMode = $('cmd-a-mode').value;
+  const bMode = $('cmd-b-mode').value;
+  const res = psiTacticsContest({
+    aSkill: Number($('cmd-a-skill').value) || 12,
+    bSkill: Number($('cmd-b-skill').value) || 12,
+    aMode, bMode,
+    aCunningUses: sa.cunningUses || 0,
+    bCunningUses: sb.cunningUses || 0,
+    aPrecog: $('cmd-precog').checked,
+    aTelepath: $('cmd-telepath').checked,
+  });
+  if (aMode === 'cunning') sa.cunningUses = (sa.cunningUses || 0) + 1;
+  if (bMode === 'cunning') sb.cunningUses = (sb.cunningUses || 0) + 1;
+  log(`— Contest of Tactics: ${a.id} at ${res.aEff} rolls ${res.a.dice} vs ${b.id} at ${res.bEff} rolls ${res.b.dice}.`);
+  if (res.winner) {
+    const w = res.winner === 'a' ? a : b;
+    psiState(w).tacticsPool = (psiState(w).tacticsPool || 0) + res.pool;
+    log(`  ${w.id}'s commander out-thinks the enemy: banks ${res.pool} point(s) of tactical advantage (+1 each, spend from the ship card).${(res.winner === 'a' ? aMode : bMode) === 'cunning' ? ' Cunning Tactics doubled the winnings.' : ''}`);
+    if ((res.winner === 'a' ? aMode : bMode) === 'desperate') log(`  Desperate Offense: ${w.id} defends at -1 this turn.`);
+  } else {
+    log('  Neither commander gains the upper hand.');
+  }
+  renderFleet();
   refreshExplain();
 }
 
@@ -892,6 +1026,7 @@ function saveEnc() {
       slots: c.slots, facing: c.facing, maneuver: c.maneuver,
       pilotSkill: c.pilotSkill, gunnerSkill: c.gunnerSkill, destroyed: c.destroyed,
       htChecksAt: c.htChecksAt, squadron: c.squadron || null, psi: c.psi || null,
+      crewWill: c.crewWill ?? 11,
     })),
   }));
   flash('Encounter saved.');
@@ -908,7 +1043,7 @@ function loadEnc() {
     Object.assign(c, {
       curDhp: d.curDhp, screen: d.screen, slots: d.slots, facing: d.facing,
       maneuver: d.maneuver, destroyed: d.destroyed, htChecksAt: d.htChecksAt,
-      squadron: d.squadron || null, psi: d.psi || null,
+      squadron: d.squadron || null, psi: d.psi || null, crewWill: d.crewWill ?? 11,
     });
     return c;
   });
@@ -931,6 +1066,7 @@ function flash(msg) {
 function renderAll() {
   renderFleet();
   renderDogfight();
+  renderCommand();
   renderBombard();
   renderAttackSelectors();
   renderToggles();

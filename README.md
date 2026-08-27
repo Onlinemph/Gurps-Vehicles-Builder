@@ -135,8 +135,16 @@ both ships, straight through force screens), commanders **uttering threats**
 **Flesh Wound** undo (1 CP turns a mauling into a graze), **orbital
 bombardment** (-4, five times dDamage on the ground), armor-gap markers on
 every damage grid showing exactly which systems can be gap-targeted, and
-torpedoes correctly barred from gap shots (see `tests/ss-psiwars.test.mjs`;
-the Tiger Manticore computes to its published $746.6M exactly). Psi-Wars is a fan creation by
+torpedoes correctly barred from gap shots. A **Command card** finishes the
+layer: turn order (fighters and corvettes before capitals, sharpest pilot
+first), Contests of Tactics between the commanders — straight, Desperate
+(+2, weaker defenses) or Cunning (-3, double winnings, cumulative -2) —
+banking pools of spendable +1s, with +4 for a precognitive commander and
++2 for a telepath reading the enemy; Leadership can inspire the crew (+1
+on success by 5+) or supervise damage control (+1 to the next jury-rig);
+and crew quality now carries the published Will scores (10/11/12/14) that
+resist uttered threats (see `tests/ss-psiwars.test.mjs`; the Tiger
+Manticore computes to its published $746.6M exactly). Psi-Wars is a fan creation by
 Mailanka; no setting text is reproduced — mechanics only.
 
 Every page has an **Explain mode** (on by default): plain-English notes under

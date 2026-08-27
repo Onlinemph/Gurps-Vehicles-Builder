@@ -535,6 +535,53 @@ export function psiMissileMods(p) {
   return mods;
 }
 
+// Psi-Wars NPC crew quality: attack/pilot skill and the crew's Will
+// (which resists Uttered Threats), with the cost multiplier for hiring.
+export const CREW_QUALITY = {
+  10: { label: 'Green', will: 10, costMult: 0.5, desc: 'untrained recruits or civilians' },
+  12: { label: 'Basic', will: 11, costMult: 1, desc: 'typical combatants' },
+  15: { label: 'Superior', will: 12, costMult: 2, desc: 'well-trained professionals' },
+  18: { label: 'Elite', will: 14, costMult: 5, desc: 'the best of the best' },
+};
+
+// Turn order: Fighters and Corvettes act before Capitals and Dreadnoughts;
+// within each group, the sharper pilot moves first.
+export function psiTurnOrder(ships) {
+  const group = (s) => psiCategory(s.sm) <= 1 ? 0 : 1;
+  return [...ships].sort((a, b) => group(a) - group(b) || (b.pilotSkill || 0) - (a.pilotSkill || 0) || String(a.id).localeCompare(String(b.id)));
+}
+
+// Space Tactics: a quick contest between the two commanders. Desperate
+// Tactics are +2 (but cost defenses); Cunning Tactics are -3 (and -2 more
+// per prior use) but double the winnings. Precognition is +4, a telepath
+// reading the enemy commander +2. The winner banks the margin as a pool
+// of +1 bonuses to hand out during the battle.
+export function psiTacticsContest({ aSkill, bSkill, aMode = 'normal', bMode = 'normal', aCunningUses = 0, bCunningUses = 0, aPrecog = false, aTelepath = false, bPrecog = false, bTelepath = false, rng = Math.random }) {
+  const eff = (skill, mode, uses, precog, telepath) => skill
+    + (mode === 'desperate' ? 2 : mode === 'cunning' ? -3 - 2 * uses : 0)
+    + (precog ? 4 : 0) + (telepath ? 2 : 0);
+  const aEff = eff(aSkill, aMode, aCunningUses, aPrecog, aTelepath);
+  const bEff = eff(bSkill, bMode, bCunningUses, bPrecog, bTelepath);
+  const a = successRoll(aEff, rng);
+  const b = successRoll(bEff, rng);
+  const aWins = a.success && (!b.success || a.margin > b.margin);
+  const bWins = b.success && (!a.success || b.margin > a.margin);
+  const winner = aWins ? 'a' : bWins ? 'b' : null;
+  let pool = 0;
+  if (winner) {
+    const margin = winner === 'a' ? a.margin - Math.max(0, b.success ? b.margin : 0) : b.margin - Math.max(0, a.success ? a.margin : 0);
+    pool = Math.max(1, margin) * ((winner === 'a' ? aMode : bMode) === 'cunning' ? 2 : 1);
+  }
+  return { a, b, aEff, bEff, winner, pool };
+}
+
+// Leadership to inspire the crew: succeed by 5+ and every nameless crewman
+// fights at +1 skill this turn.
+export function psiInspire(leadership, rng = Math.random) {
+  const r = successRoll(leadership, rng);
+  return { roll: r, inspired: r.success && r.margin >= 5 };
+}
+
 // Psi-Wars dogfighting: every 25G of acceleration is +1 in pilot contests.
 export function psiAccelBonus(accelG) {
   return Math.floor(Math.max(0, accelG || 0) / 25);
